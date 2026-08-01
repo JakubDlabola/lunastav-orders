@@ -14,11 +14,11 @@ TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.d
 
 def fmt_czk(value):
     if not value:
-        return '0,00'
+        return '0'
     try:
-        return '{:,.2f}'.format(float(value)).replace(',', 'X').replace('.', ',').replace('X', ' ')
+        return '{:,.0f}'.format(float(value)).replace(',', '\xa0')
     except (TypeError, ValueError):
-        return '0,00'
+        return '0'
 
 
 def fmt_date(value):

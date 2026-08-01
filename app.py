@@ -159,6 +159,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <input type="hidden" name="eligible_amount" id="inp_eligible">
     <input type="hidden" name="discount_pct" id="inp_discount">
 
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
+      <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
+      <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník má nárok na dotaci NZÚ</label>
+    </div>
+
     <span class="field-label">Typ práce</span>
     <div class="options">
       <label class="opt-wrap"><input type="radio" name="work_type" value="roof" onchange="onTypeChange()"><span class="opt-btn">Střecha</span></label>
@@ -191,8 +196,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
-      <div class="preview-row grant"><span>Způsobilé náklady (dotace)</span><span id="pv-eligible">—</span></div>
-      <div class="preview-row"><span>Sleva</span><span id="pv-disc">—</span></div>
+      <div class="preview-row grant" id="pv-eligible-row"><span>Způsobilé náklady (dotace)</span><span id="pv-eligible">—</span></div>
+      <div class="preview-row" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
       <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
       <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
@@ -219,6 +224,15 @@ const SYM = 250;
 function getRemK() {{
   const v = parseFloat(document.getElementById('remaining_grant_k').value);
   return isNaN(v) ? null : v;
+}}
+
+function hasGrant() {{ return document.getElementById('grant_enabled').checked; }}
+
+function roofMinRate(qty) {{
+  if (qty <= 50) return 1000;
+  if (qty >= 100) return 750;
+  if (qty < 80) return 1000 + (870 - 1000) / (80 - 50) * (qty - 50);
+  return 870 + (750 - 870) / (100 - 80) * (qty - 80);
 }}
 
 function fmt(n) {{
@@ -254,16 +268,30 @@ function calc() {{
   if (!qty) {{ document.getElementById('preview').classList.add('hidden'); return; }}
 
   const listed_total = LISTED[t] * qty;
-  const formula_total = GRANT_RATE[t] * qty;
-  const remK = getRemK();
-  const eligible = remK !== null ? Math.min(formula_total, remK) : formula_total;
-  const disc = Math.max(0, (1 - eligible / listed_total)) * 100;
+  let eligible, disc;
+  if (!hasGrant()) {{
+    eligible = listed_total;
+    disc = 0;
+  }} else {{
+    const formula_total = GRANT_RATE[t] * qty;
+    const remK = getRemK();
+    let grant_eligible = remK !== null ? Math.min(formula_total, remK) : formula_total;
+    if (t === 'roof') {{
+      const min_price = Math.round(roofMinRate(qty) * qty);
+      grant_eligible = Math.max(grant_eligible, min_price);
+    }}
+    eligible = Math.min(grant_eligible, listed_total);
+    disc = Math.max(0, (1 - eligible / listed_total)) * 100;
+  }}
   const total = eligible + SYM;
 
+  const grantOn = hasGrant();
   document.getElementById('pv-base').textContent = fmt(listed_total);
   document.getElementById('pv-eligible').textContent = fmt(eligible);
   document.getElementById('pv-disc').textContent = disc.toFixed(2) + ' %';
   document.getElementById('pv-total').textContent = fmt(total);
+  document.getElementById('pv-eligible-row').classList.toggle('hidden', !grantOn);
+  document.getElementById('pv-disc-row').classList.toggle('hidden', !grantOn);
 
   const splitVal = t === 'windows' ? '80-20' : (getSplit() || '');
   if (splitVal) {{
