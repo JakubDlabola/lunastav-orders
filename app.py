@@ -106,7 +106,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     partner_name = order['partner_id'][1] if order['partner_id'] else 'Neznámý zákazník'
 
     zastavena_plocha = ''
-    remaining_grant_k = 'null'
+    remaining_grant_k = '250'
     if order.get('opportunity_id'):
         leads = call('crm.lead', 'read', [[order['opportunity_id'][0]]],
                      {'fields': ['name', 'x_studio_zastavena_plocha']})
@@ -175,16 +175,21 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       </div>
     </div>
 
+    <span class="field-label">Zbývající dotace (tis. Kč)</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1" oninput="calc()" style="width:160px;" placeholder="bez omezení">
+      <span style="color:#888;font-size:13px;">tis. Kč</span>
+    </div>
+    <div class="grant-info" style="margin-top:4px;">Výchozí 250 tis. Kč; prázdné pole = bez omezení</div>
+
     <div id="qty-m2-section" class="hidden">
       <span class="field-label">Zastavěná plocha (m²)</span>
       <input type="number" name="qty_m2" id="qty_m2" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
-      <div class="grant-info">Zbývající dotace: {'— (neuvedeno)' if remaining_grant_k == 'null' else remaining_grant_k + ' 000 Kč'}</div>
     </div>
 
     <div id="qty-windows-section" class="hidden">
       <span class="field-label">Počet oken</span>
       <input type="number" name="qty_windows" id="qty_windows" value="1" min="1" step="1" oninput="calc()">
-      <div class="grant-info">Zbývající dotace: {'— (neuvedeno)' if remaining_grant_k == 'null' else remaining_grant_k + ' 000 Kč'}</div>
     </div>
 
     <div id="preview" class="preview hidden">
@@ -208,10 +213,14 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
   </form>
 </div>
 <script>
-const REM_K = {remaining_grant_k};
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
 const SYM = 250;
+
+function getRemK() {{
+  const v = parseFloat(document.getElementById('remaining_grant_k').value);
+  return isNaN(v) ? null : v;
+}}
 
 function fmt(n) {{
   return new Intl.NumberFormat('cs-CZ').format(Math.round(n)) + ' Kč';
@@ -247,7 +256,8 @@ function calc() {{
 
   const listed_total = LISTED[t] * qty;
   const formula_total = GRANT_RATE[t] * qty;
-  const eligible = REM_K !== null ? Math.min(formula_total, REM_K * 1000) : formula_total;
+  const remK = getRemK();
+  const eligible = remK !== null ? Math.min(formula_total, remK * 1000) : formula_total;
   const disc = Math.max(0, (1 - eligible / listed_total)) * 100;
   const total = eligible + SYM;
 
