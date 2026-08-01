@@ -196,6 +196,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
+      <div class="preview-row hidden" id="pv-rate-row"><span id="pv-rate-label">Efektivní cena / m²</span><span id="pv-rate">—</span></div>
       <div class="preview-row grant" id="pv-eligible-row"><span>Způsobilé náklady (dotace)</span><span id="pv-eligible">—</span></div>
       <div class="preview-row" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
@@ -267,7 +268,7 @@ function calc() {{
   if (!qty) {{ document.getElementById('preview').classList.add('hidden'); return; }}
 
   const listed_total = LISTED[t] * qty;
-  let eligible, disc;
+  let eligible, disc, floorHit = false;
   if (!hasGrant()) {{
     eligible = listed_total;
     disc = 0;
@@ -277,7 +278,7 @@ function calc() {{
     let grant_eligible = remK !== null ? Math.min(formula_total, remK) : formula_total;
     if (t === 'roof') {{
       const min_price = Math.round(roofMinRate(qty) * qty);
-      grant_eligible = Math.max(grant_eligible, min_price);
+      if (grant_eligible < min_price) {{ grant_eligible = min_price; floorHit = true; }}
     }}
     eligible = Math.min(grant_eligible, listed_total);
     disc = Math.max(0, (1 - eligible / listed_total)) * 100;
@@ -291,6 +292,26 @@ function calc() {{
   document.getElementById('pv-total').textContent = fmt(total);
   document.getElementById('pv-eligible-row').classList.toggle('hidden', !grantOn);
   document.getElementById('pv-disc-row').classList.toggle('hidden', !grantOn);
+
+  if (t !== 'windows') {{
+    const unit = 'm²';
+    const eff_rate = Math.round(eligible / qty);
+    const rateRowEl = document.getElementById('pv-rate-row');
+    document.getElementById('pv-rate-label').textContent = `Efektivní cena / ${{unit}}`;
+    let rateText = new Intl.NumberFormat('cs-CZ').format(eff_rate) + ` Kč/${{unit}}`;
+    if (floorHit) {{
+      rateText += ' — minimální cena';
+      rateRowEl.style.color = '#c8670a';
+      rateRowEl.style.fontWeight = '600';
+    }} else {{
+      rateRowEl.style.color = '';
+      rateRowEl.style.fontWeight = '';
+    }}
+    document.getElementById('pv-rate').textContent = rateText;
+    rateRowEl.classList.remove('hidden');
+  }} else {{
+    document.getElementById('pv-rate-row').classList.add('hidden');
+  }}
 
   const splitVal = t === 'windows' ? '80-20' : (getSplit() || '');
   if (splitVal) {{
