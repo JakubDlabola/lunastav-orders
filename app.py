@@ -1,3 +1,4 @@
+import base64
 import os
 import re
 import xmlrpc.client
@@ -5,6 +6,8 @@ import xmlrpc.client
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse
+
+from contract import generate_contract
 
 load_dotenv()
 
@@ -22,6 +25,67 @@ def odoo_connect():
     uid = common.authenticate(ODOO_DB, ODOO_USER, ODOO_API_KEY, {})
     models = xmlrpc.client.ServerProxy(f'{ODOO_URL}/xmlrpc/2/object')
     return uid, models
+
+
+@app.get('/generate', response_class=HTMLResponse)
+def generate(order_id: int = Query(...), key: str = Query(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+
+    uid, models = odoo_connect()
+
+    def call(model, method, args, kw={}):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+
+    orders = call('sale.order', 'read', [[order_id]], {'fields': [
+        'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
+        'x_studio_adresa_realizace', 'x_studio_popis_dila',
+        'x_studio_zaloha_kc', 'x_studio_termin_zalohy_1',
+        'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_1',
+        'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
+        'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
+        'x_studio_cena_po_odecteni_dotace',
+    ]})
+    if not orders:
+        raise HTTPException(status_code=404, detail=f'Order {order_id} not found')
+    order = orders[0]
+
+    partner = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': [
+        'name', 'street', 'zip', 'city', 'email', 'phone',
+    ]})[0]
+
+    lines = call('sale.order.line', 'read', [order['order_line']], {'fields': [
+        'product_id', 'name', 'product_uom_qty', 'product_uom_id',
+        'price_unit', 'price_subtotal', 'discount', 'display_type', 'is_downpayment',
+    ]})
+
+    pdf_bytes = generate_contract(order, partner, lines)
+
+    filename = f"Smlouva_{order['name']}.pdf"
+    call('ir.attachment', 'create', [{
+        'name': filename,
+        'res_model': 'sale.order',
+        'res_id': order_id,
+        'type': 'binary',
+        'datas': base64.b64encode(pdf_bytes).decode(),
+        'mimetype': 'application/pdf',
+    }])
+
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Smlouva vygenerována</title></head>
+<body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
+  <div style="background:#fff;border-radius:8px;padding:40px;max-width:480px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+    <div style="font-size:56px;margin-bottom:12px;">✓</div>
+    <h2 style="margin:0 0 12px;">Smlouva vygenerována</h2>
+    <p>Soubor <strong>{filename}</strong> byl uložen jako příloha objednávky v Odoo.</p>
+    <p style="color:#888;font-size:13px;">Vraťte se do Odoo, obnovte stránku a najdete přílohu v přílohách objednávky.</p>
+    <button onclick="window.close()"
+      style="margin-top:20px;padding:10px 28px;font-size:14px;cursor:pointer;
+             background:#c8a840;color:#fff;border:none;border-radius:4px;">
+      Zavřít okno
+    </button>
+  </div>
+</body></html>"""
 
 
 @app.get('/order-form', response_class=HTMLResponse)
