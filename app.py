@@ -106,7 +106,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     partner_name = order['partner_id'][1] if order['partner_id'] else 'Neznámý zákazník'
 
     zastavena_plocha = ''
-    remaining_grant_k = '250'
+    remaining_grant_k = '250000'
     if order.get('opportunity_id'):
         leads = call('crm.lead', 'read', [[order['opportunity_id'][0]]],
                      {'fields': ['name', 'x_studio_zastavena_plocha']})
@@ -115,7 +115,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
             zastavena_plocha = lead.get('x_studio_zastavena_plocha') or ''
             m = re.search(r'->\$(\d+)', lead['name'])
             if m:
-                remaining_grant_k = m.group(1)
+                remaining_grant_k = str(int(m.group(1)) * 1000)
 
     return f"""<!doctype html>
 <html>
@@ -175,12 +175,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       </div>
     </div>
 
-    <span class="field-label">Zbývající dotace (tis. Kč)</span>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1" oninput="calc()" style="width:160px;" placeholder="bez omezení">
-      <span style="color:#888;font-size:13px;">tis. Kč</span>
-    </div>
-    <div class="grant-info" style="margin-top:4px;">Výchozí 250 tis. Kč; prázdné pole = bez omezení</div>
+    <span class="field-label">Zbývající dotace (Kč)</span>
+    <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1000" oninput="calc()" placeholder="bez omezení">
+    <div class="grant-info" style="margin-top:4px;">Výchozí 250 000 Kč; prázdné pole = bez omezení</div>
 
     <div id="qty-m2-section" class="hidden">
       <span class="field-label">Zastavěná plocha (m²)</span>
@@ -197,6 +194,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <div class="preview-row grant"><span>Způsobilé náklady (dotace)</span><span id="pv-eligible">—</span></div>
       <div class="preview-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
+      <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
+      <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
     </div>
 
     <div id="split-section" class="hidden">
@@ -257,7 +256,7 @@ function calc() {{
   const listed_total = LISTED[t] * qty;
   const formula_total = GRANT_RATE[t] * qty;
   const remK = getRemK();
-  const eligible = remK !== null ? Math.min(formula_total, remK * 1000) : formula_total;
+  const eligible = remK !== null ? Math.min(formula_total, remK) : formula_total;
   const disc = Math.max(0, (1 - eligible / listed_total)) * 100;
   const total = eligible + SYM;
 
@@ -265,6 +264,21 @@ function calc() {{
   document.getElementById('pv-eligible').textContent = fmt(eligible);
   document.getElementById('pv-disc').textContent = disc.toFixed(2) + ' %';
   document.getElementById('pv-total').textContent = fmt(total);
+
+  const splitVal = t === 'windows' ? '80-20' : (getSplit() || '');
+  if (splitVal) {{
+    const [a, b] = splitVal.split('-').map(Number);
+    document.getElementById('pv-zaloha-label').textContent = `Záloha (${{a}} %)`;
+    document.getElementById('pv-doplatek-label').textContent = `Doplatek (${{b}} %)`;
+    document.getElementById('pv-zaloha').textContent = fmt(Math.round(total * a / 100));
+    document.getElementById('pv-doplatek').textContent = fmt(Math.round(total * b / 100));
+    document.getElementById('pv-zaloha-row').classList.remove('hidden');
+    document.getElementById('pv-doplatek-row').classList.remove('hidden');
+  }} else {{
+    document.getElementById('pv-zaloha-row').classList.add('hidden');
+    document.getElementById('pv-doplatek-row').classList.add('hidden');
+  }}
+
   document.getElementById('preview').classList.remove('hidden');
 
   document.getElementById('inp_eligible').value = eligible;
@@ -281,7 +295,7 @@ function checkSubmit() {{
   document.getElementById('submitBtn').disabled = !(t && mat && split && eligible);
 }}
 
-document.getElementById('mainForm').addEventListener('change', checkSubmit);
+document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); }});
 </script>
 </body>
 </html>"""
