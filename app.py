@@ -231,8 +231,7 @@ function hasGrant() {{ return document.getElementById('grant_enabled').checked; 
 function roofMinRate(qty) {{
   if (qty <= 50) return 1000;
   if (qty >= 100) return 750;
-  if (qty < 80) return 1000 + (870 - 1000) / (80 - 50) * (qty - 50);
-  return 870 + (750 - 870) / (100 - 80) * (qty - 80);
+  return 1000 + (750 - 1000) / (100 - 50) * (qty - 50);
 }}
 
 function fmt(n) {{
