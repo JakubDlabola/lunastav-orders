@@ -71,20 +71,28 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
         'mimetype': 'application/pdf',
     }])
 
+    odoo_order_url = f'{ODOO_URL}/odoo/sales/{order_id}'
+
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Smlouva vygenerována</title></head>
 <body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
   <div style="background:#fff;border-radius:8px;padding:40px;max-width:480px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
-    <div style="font-size:56px;margin-bottom:12px;">✓</div>
+    <div style="font-size:56px;margin-bottom:12px;">&#10003;</div>
     <h2 style="margin:0 0 12px;">Smlouva vygenerována</h2>
-    <p>Soubor <strong>{filename}</strong> byl uložen jako příloha objednávky v Odoo.</p>
-    <p style="color:#888;font-size:13px;">Vraťte se do Odoo, obnovte stránku a najdete přílohu v přílohách objednávky.</p>
-    <button onclick="window.close()"
-      style="margin-top:20px;padding:10px 28px;font-size:14px;cursor:pointer;
-             background:#c8a840;color:#fff;border:none;border-radius:4px;">
-      Zavřít okno
-    </button>
+    <p style="color:#888;font-size:13px;">Přesměrování zpět do Odoo&hellip;</p>
   </div>
+  <script>
+    try {{
+      if (window.opener) {{
+        window.opener.location.href = '{odoo_order_url}';
+        window.close();
+      }} else {{
+        window.location.href = '{odoo_order_url}';
+      }}
+    }} catch(e) {{
+      window.location.href = '{odoo_order_url}';
+    }}
+  </script>
 </body></html>"""
 
 
@@ -161,7 +169,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
       <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
-      <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník má nárok na dotaci NZÚ</label>
+      <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
     </div>
 
     <span class="field-label">Typ práce</span>
@@ -270,8 +278,8 @@ function calc() {{
   const listed_total = LISTED[t] * qty;
   let eligible, disc, floorHit = false;
   if (!hasGrant()) {{
-    eligible = listed_total;
-    disc = 0;
+    eligible = t === 'roof' ? Math.round(roofMinRate(qty) * qty) : GRANT_RATE[t] * qty;
+    disc = Math.max(0, (1 - eligible / listed_total)) * 100;
   }} else {{
     const formula_total = GRANT_RATE[t] * qty;
     const remK = getRemK();
@@ -425,28 +433,56 @@ def order_form_post(
         'x_studio_vyse_dotace_kc': eligible_amount,
     }])
 
-    def fmt_czk(v):
-        return f"{round(v):,}".replace(',', ' ') + ' Kč'
+    # Generate contract PDF immediately after saving
+    updated = call('sale.order', 'read', [[order_id]], {'fields': [
+        'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
+        'x_studio_adresa_realizace', 'x_studio_popis_dila',
+        'x_studio_zaloha_kc', 'x_studio_termin_zalohy_1',
+        'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_1',
+        'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
+        'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
+        'x_studio_cena_po_odecteni_dotace',
+    ]})[0]
+    partner = call('res.partner', 'read', [[updated['partner_id'][0]]], {'fields': [
+        'name', 'street', 'zip', 'city', 'email', 'phone',
+    ]})[0]
+    lines = call('sale.order.line', 'read', [updated['order_line']], {'fields': [
+        'product_id', 'name', 'product_uom_qty', 'product_uom_id',
+        'price_unit', 'price_subtotal', 'discount', 'display_type', 'is_downpayment',
+    ]})
+    pdf_bytes = generate_contract(updated, partner, lines)
+    filename = f"Smlouva_{updated['name']}.pdf"
+    call('ir.attachment', 'create', [{
+        'name': filename,
+        'res_model': 'sale.order',
+        'res_id': order_id,
+        'type': 'binary',
+        'datas': base64.b64encode(pdf_bytes).decode(),
+        'mimetype': 'application/pdf',
+    }])
+
+    odoo_order_url = f'{ODOO_URL}/odoo/sales/{order_id}'
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Objednávka vytvořena</title></head>
 <body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
   <div style="background:#fff;border-radius:8px;padding:40px;max-width:480px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
     <div style="font-size:56px;margin-bottom:12px;">&#10003;</div>
-    <h2 style="margin:0 0 16px;">Objednávka vytvořena</h2>
-    <table style="width:100%;font-size:14px;border-collapse:collapse;text-align:left;">
-      <tr><td style="padding:6px 0;color:#888;">Způsobilé náklady</td><td style="text-align:right;font-weight:bold;">{fmt_czk(eligible_amount)}</td></tr>
-      <tr><td style="padding:6px 0;color:#888;">Celkem k úhradě</td><td style="text-align:right;font-weight:bold;">{fmt_czk(total)}</td></tr>
-      <tr><td style="padding:6px 0;color:#888;">Záloha ({split_pct[0]} %)</td><td style="text-align:right;">{fmt_czk(zaloha)}</td></tr>
-      <tr><td style="padding:6px 0;color:#888;">Doplatek ({split_pct[1]} %)</td><td style="text-align:right;">{fmt_czk(doplatek)}</td></tr>
-    </table>
-    <p style="color:#888;font-size:13px;margin-top:20px;">Vraťte se do Odoo a obnovte stránku objednávky.</p>
-    <button onclick="window.close()"
-      style="margin-top:12px;padding:10px 28px;font-size:14px;cursor:pointer;
-             background:#c8a840;color:#fff;border:none;border-radius:4px;">
-      Zavřít okno
-    </button>
+    <h2 style="margin:0 0 12px;">Objednávka vytvořena</h2>
+    <p style="color:#888;font-size:13px;">Přesměrování zpět do Odoo&hellip;</p>
   </div>
+  <script>
+    try {{
+      if (window.opener) {{
+        window.opener.location.href = '{odoo_order_url}';
+        window.close();
+      }} else {{
+        window.location.href = '{odoo_order_url}';
+      }}
+    }} catch(e) {{
+      window.location.href = '{odoo_order_url}';
+    }}
+  </script>
 </body></html>"""
 
 
