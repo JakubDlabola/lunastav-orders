@@ -181,8 +181,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
 
     <div class="tab-bar">
-      <button type="button" class="tab-btn active" onclick="showTab(this,'tab-main')">Objednávka</button>
-      <button type="button" class="tab-btn" onclick="showTab(this,'tab-misc')">Upřesnění</button>
+      <button type="button" class="tab-btn active" onclick="showTab(this,'tab-main')">Produkty</button>
+      <button type="button" class="tab-btn" onclick="showTab(this,'tab-misc')">Ostatní</button>
     </div>
 
     <div id="tab-main" class="tab-pane">
