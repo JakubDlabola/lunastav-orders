@@ -33,7 +33,16 @@ def fmt_date(value):
     return str(value)
 
 
-def replace_in_element(element, replacements):
+def _make_bold(run):
+    rPr = run.find(qn('w:rPr'))
+    if rPr is None:
+        rPr = etree.Element(qn('w:rPr'))
+        run.insert(0, rPr)
+    if rPr.find(qn('w:b')) is None:
+        etree.SubElement(rPr, qn('w:b'))
+
+
+def replace_in_element(element, replacements, bold_keys=None):
     """Replace placeholder text across all runs in every paragraph of an XML element."""
     for p in element.iter(qn('w:p')):
         runs = list(p.findall('.//' + qn('w:r')))
@@ -52,6 +61,8 @@ def replace_in_element(element, replacements):
         if not any(k in full_text for k in replacements):
             continue
 
+        should_bold = bold_keys and any(k in full_text for k in bold_keys)
+
         new_text = full_text
         for k, v in replacements.items():
             new_text = new_text.replace(k, str(v))
@@ -62,6 +73,8 @@ def replace_in_element(element, replacements):
         for child in list(first_r):
             if child.tag in (qn('w:t'), qn('w:tab')):
                 first_r.remove(child)
+        if should_bold:
+            _make_bold(first_r)
         segments = new_text.split('\t')
         for i, seg in enumerate(segments):
             if seg:
@@ -207,8 +220,14 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         for ln in lines
         if not ln.get('display_type') and not ln.get('is_downpayment')
     ]
+    bold_keys = {
+        '{totalAmountWithTax}', '{totalAmount}', '{taxAmount}',
+        '{priceWithoutDiscount}', '{discount}',
+        '{_1_Zalohova_94eb7}', '{Doplatek_3d201}',
+        '{Vyse_dotac_6d201}', '{Konecna_ce_0d59a}',
+    }
     fill_items_table(doc, real_lines)
-    replace_in_element(doc.element.body, replacements)
+    replace_in_element(doc.element.body, replacements, bold_keys=bold_keys)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         docx_path = os.path.join(tmpdir, 'contract.docx')
