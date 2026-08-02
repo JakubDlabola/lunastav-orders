@@ -156,11 +156,6 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     button[type=submit]:disabled {{ background: #ccc; cursor: default; }}
     .hidden {{ display: none !important; }}
     .grant-info {{ font-size: 13px; color: #555; margin-top: 4px; }}
-    .tab-bar {{ display: flex; gap: 0; margin-bottom: 24px; border-bottom: 2px solid #eee; }}
-    .tab-btn {{ background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; padding: 9px 20px; font-size: 14px; font-weight: 500; cursor: pointer; color: #aaa; transition: color .15s, border-color .15s; }}
-    .tab-btn.active {{ color: #c8a840; border-bottom-color: #c8a840; }}
-    .tab-pane {{ display: block; }}
-    .tab-pane.hidden {{ display: none !important; }}
     input[type=text] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
   </style>
 </head>
@@ -180,12 +175,6 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <input type="hidden" name="discount_pct_windows" id="inp_disc_windows" value="0">
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
 
-    <div class="tab-bar">
-      <button type="button" class="tab-btn active" onclick="showTab(this,'tab-main')">Produkty</button>
-      <button type="button" class="tab-btn" onclick="showTab(this,'tab-misc')">Ostatní</button>
-    </div>
-
-    <div id="tab-main" class="tab-pane">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
       <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
       <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
@@ -243,6 +232,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <div class="preview-row hidden" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
+      <div class="preview-row hidden" id="pv-pochozi-row"><span>Pochozí plocha / lávka</span><span id="pv-pochozi">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
       <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
       <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
@@ -257,9 +247,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       </div>
       <div class="split-note" id="split-note"></div>
     </div>
-    </div>
 
-    <div id="tab-misc" class="tab-pane hidden">
+    <div style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
         <input type="checkbox" id="addr_same" name="addr_same" value="1" checked
                onchange="document.getElementById('addr-custom').classList.toggle('hidden',this.checked)"
@@ -273,6 +262,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <span class="field-label" style="margin-top:20px;">Popis díla</span>
       <input type="text" name="popis_dila" id="popis_dila" placeholder="">
     </div>
+
 
     <button type="submit" id="submitBtn" disabled>Vytvořit objednávku</button>
   </form>
@@ -290,6 +280,12 @@ function roofMinRate(qty) {{
   if (qty <= 50) return 1000;
   if (qty >= 100) return 750;
   return 1000 + (750 - 1000) / (100 - 50) * (qty - 50);
+}}
+
+function ceilMinRate(qty) {{
+  if (qty <= 50) return 1000;
+  if (qty >= 90) return 750;
+  return 1000 + (750 - 1000) / (90 - 50) * (qty - 50);
 }}
 
 function onTypesChange() {{
@@ -327,7 +323,7 @@ function calc() {{
   let eRoof = 0, eCeil = 0, eWin = 0, grantReceived = 0, floorHit = false;
   if (!hasGrant()) {{
     eRoof = hasRoof ? Math.round(roofMinRate(qRoof) * qRoof) : 0;
-    eCeil = hasCeil ? GRANT_RATE.ceiling * qCeil : 0;
+    eCeil = hasCeil ? Math.round(ceilMinRate(qCeil) * qCeil) : 0;
     eWin  = hasWin  ? GRANT_RATE.windows * qWin  : 0;
     grantReceived = 0;
   }} else {{
@@ -338,7 +334,14 @@ function calc() {{
       const minR = Math.round(roofMinRate(qRoof) * qRoof);
       if (eRoof < minR) {{ eRoof = minR; floorHit = true; }}
     }}
-    eRoof = Math.min(eRoof, lRoof); eCeil = Math.min(eCeil, lCeil); eWin = Math.min(eWin, lWin);
+    if (hasCeil && qCeil > 0) {{
+      const minC = Math.round(ceilMinRate(qCeil) * qCeil);
+      if (eCeil < minC) {{ eCeil = minC; floorHit = true; }}
+    }}
+    const ceilFloor = hasCeil && qCeil > 0 ? Math.round(ceilMinRate(qCeil) * qCeil) : 0;
+    eRoof = Math.min(eRoof, lRoof);
+    eCeil = Math.min(eCeil, Math.max(lCeil, ceilFloor));
+    eWin  = Math.min(eWin,  lWin);
   }}
 
   const eTotal = eRoof + eCeil + eWin;
@@ -356,18 +359,27 @@ function calc() {{
   document.getElementById('inp_disc_windows').value = dWin.toFixed(4);
   document.getElementById('inp_grant_amount').value = Math.round(grantUsed);
 
+  const q5100 = hasCeil ? (parseFloat(document.getElementById('qty_5100').value) || 0) : 0;
+  const q5101 = hasCeil ? (parseFloat(document.getElementById('qty_5101').value) || 0) : 0;
+  const pochoziEff = q5100 + q5101 * 0.625;
+  const pochoziCharged = Math.max(0, pochoziEff - 10);
+  const pochoziPrice = Math.round(pochoziCharged * 750);
+  document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice);
+  document.getElementById('pv-pochozi-row').classList.toggle('hidden', !hasCeil || (q5100 === 0 && q5101 === 0));
+
+  const grandTotal = eTotal + DOPRAVA + pochoziPrice;
   const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
   document.getElementById('pv-disc').textContent = dTotal.toFixed(1) + ' %';
   document.getElementById('pv-disc-row').classList.toggle('hidden', dTotal < 0.5);
 
   const grantOn = hasGrant();
   document.getElementById('pv-base').textContent  = fmt(lTotal);
-  document.getElementById('pv-total').textContent = fmt(eTotal + DOPRAVA);
+  document.getElementById('pv-total').textContent = fmt(grandTotal);
   document.getElementById('pv-grant-row').classList.toggle('hidden', !grantOn);
   document.getElementById('pv-client-row').classList.toggle('hidden', !grantOn);
   if (grantOn) {{
     document.getElementById('pv-grant').textContent  = fmt(grantReceived);
-    document.getElementById('pv-client').textContent = fmt(clientPays);
+    document.getElementById('pv-client').textContent = fmt(clientPays + pochoziPrice);
   }}
 
   const rateEl = document.getElementById('pv-rate-row');
@@ -389,8 +401,8 @@ function calc() {{
     const [a, b] = splitVal.split('-').map(Number);
     document.getElementById('pv-zaloha-label').textContent   = 'Z\u00e1loha (' + a + ' %)';
     document.getElementById('pv-doplatek-label').textContent = 'Doplatek (' + b + ' %)';
-    document.getElementById('pv-zaloha').textContent         = fmt(Math.round((eTotal + DOPRAVA) * a / 100));
-    document.getElementById('pv-doplatek').textContent       = fmt(Math.round((eTotal + DOPRAVA) * b / 100));
+    document.getElementById('pv-zaloha').textContent         = fmt(Math.round(grandTotal * a / 100));
+    document.getElementById('pv-doplatek').textContent       = fmt(Math.round(grandTotal * b / 100));
     document.getElementById('pv-zaloha-row').classList.remove('hidden');
     document.getElementById('pv-doplatek-row').classList.remove('hidden');
   }} else {{
@@ -425,13 +437,6 @@ function checkSubmit() {{
 }}
 
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); }});
-
-function showTab(btn, id) {{
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
-  document.getElementById(id).classList.remove('hidden');
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-}}
 </script>
 </body>
 </html>"""
@@ -556,12 +561,18 @@ def order_form_post(
             'discount': 0,
         }))
 
+    # Pochozí plocha / lávka pricing (ceiling add-ons)
+    qty_5100_f = float(qty_5100 or 0)
+    qty_5101_f = float(qty_5101 or 0)
+    pochozi_eff_m2 = (qty_5100_f + qty_5101_f * 0.625) if has_ceiling else 0.0
+    pochozi_charged_m2 = max(0.0, pochozi_eff_m2 - 10)
+    pochozi_total_incl = round(pochozi_charged_m2 * 750)
+    pochozi_unit_per_eff_m2 = (pochozi_charged_m2 * 750 / TAX_RATE / pochozi_eff_m2) if pochozi_eff_m2 > 0 else 0.0
+
     # Extra add-on products (no grant/discount involvement)
     extra_needed = []
     if has_roof and extra_5000a: extra_needed.append('5000A')
     if has_roof and extra_5000b: extra_needed.append('5000B')
-    qty_5100_f = float(qty_5100 or 0)
-    qty_5101_f = float(qty_5101 or 0)
     if has_ceiling and qty_5100_f > 0: extra_needed.append('5100')
     if has_ceiling and qty_5101_f > 0: extra_needed.append('5101')
     if extra_needed:
@@ -577,16 +588,16 @@ def order_form_post(
                     'price_unit': extra_map[code].get('lst_price', 0),
                     'discount': 0,
                 }))
-        for code, qty_f in [('5100', qty_5100_f), ('5101', qty_5101_f)]:
-            if code in extra_map:
+        for code, qty_f, conv in [('5100', qty_5100_f, 1.0), ('5101', qty_5101_f, 0.625)]:
+            if code in extra_map and qty_f > 0:
                 order_lines.append((0, 0, {
                     'product_id': extra_map[code]['id'],
                     'product_uom_qty': qty_f,
-                    'price_unit': extra_map[code].get('lst_price', 0),
+                    'price_unit': round(pochozi_unit_per_eff_m2 * conv, 2),
                     'discount': 0,
                 }))
 
-    total = eligible_roof + eligible_ceiling + eligible_windows + doprava_price
+    total = eligible_roof + eligible_ceiling + eligible_windows + doprava_price + pochozi_total_incl
     zaloha   = round(total * split_pct[0] / 100)
     doplatek = round(total * split_pct[1] / 100)
     client_pays = round(total - grant_amount)
