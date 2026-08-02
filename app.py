@@ -139,10 +139,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     .field-label {{ font-weight: bold; font-size: 14px; margin: 20px 0 8px; display: block; }}
     .options {{ display: flex; gap: 8px; flex-wrap: wrap; }}
     .opt-wrap {{ position: relative; }}
-    .opt-wrap input[type=radio] {{ position: absolute; opacity: 0; width: 0; height: 0; }}
+    .opt-wrap input[type=radio], .opt-wrap input[type=checkbox] {{ position: absolute; opacity: 0; width: 0; height: 0; }}
     .opt-btn {{ display: inline-block; padding: 8px 18px; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 14px; transition: border-color .15s, background .15s; user-select: none; }}
-    .opt-wrap input[type=radio]:checked ~ .opt-btn {{ border-color: #c8a840; background: #fdf8ea; }}
+    .opt-wrap input[type=radio]:checked ~ .opt-btn, .opt-wrap input[type=checkbox]:checked ~ .opt-btn {{ border-color: #c8a840; background: #fdf8ea; }}
     .opt-btn:hover {{ border-color: #c8a840; }}
+    .type-section {{ border-left: 3px solid #c8a840; padding-left: 14px; margin-top: 16px; }}
     input[type=number] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
     .preview {{ background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 16px 20px; margin-top: 20px; font-size: 14px; }}
     .preview-row {{ display: flex; justify-content: space-between; margin-bottom: 6px; }}
@@ -164,8 +165,12 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
   <form method="post" action="/order-form" id="mainForm">
     <input type="hidden" name="order_id" value="{order_id}">
     <input type="hidden" name="key" value="{key}">
-    <input type="hidden" name="eligible_amount" id="inp_eligible">
-    <input type="hidden" name="discount_pct" id="inp_discount">
+    <input type="hidden" name="eligible_roof"        id="inp_elig_roof"    value="0">
+    <input type="hidden" name="eligible_ceiling"     id="inp_elig_ceiling" value="0">
+    <input type="hidden" name="eligible_windows"     id="inp_elig_windows" value="0">
+    <input type="hidden" name="discount_pct_roof"    id="inp_disc_roof"    value="0">
+    <input type="hidden" name="discount_pct_ceiling" id="inp_disc_ceiling" value="0">
+    <input type="hidden" name="discount_pct_windows" id="inp_disc_windows" value="0">
 
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
       <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
@@ -174,33 +179,41 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     <span class="field-label">Typ práce</span>
     <div class="options">
-      <label class="opt-wrap"><input type="radio" name="work_type" value="roof" onchange="onTypeChange()"><span class="opt-btn">Střecha</span></label>
-      <label class="opt-wrap"><input type="radio" name="work_type" value="ceiling" onchange="onTypeChange()"><span class="opt-btn">Strop</span></label>
-      <label class="opt-wrap"><input type="radio" name="work_type" value="windows" onchange="onTypeChange()"><span class="opt-btn">Okna</span></label>
+      <label class="opt-wrap"><input type="checkbox" name="has_roof"    id="chk_roof"    onchange="onTypesChange()"><span class="opt-btn">Střecha</span></label>
+      <label class="opt-wrap"><input type="checkbox" name="has_ceiling" id="chk_ceiling" onchange="onTypesChange()"><span class="opt-btn">Strop</span></label>
+      <label class="opt-wrap"><input type="checkbox" name="has_windows" id="chk_windows" onchange="onTypesChange()"><span class="opt-btn">Okna</span></label>
     </div>
 
-    <div id="material-section" class="hidden">
-      <span class="field-label">Materiál</span>
+    <div id="roof-section" class="hidden type-section">
+      <span class="field-label">Materiál — Střecha</span>
       <div class="options">
-        <label class="opt-wrap"><input type="radio" name="material" value="thermofloc" onchange="calc()"><span class="opt-btn">Thermofloc</span></label>
-        <label class="opt-wrap"><input type="radio" name="material" value="supafil" onchange="calc()"><span class="opt-btn">SUPAFIL LOFT PRO</span></label>
-        <label class="opt-wrap"><input type="radio" name="material" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
+        <label class="opt-wrap"><input type="radio" name="material_roof" value="thermofloc" onchange="calc()"><span class="opt-btn">Thermofloc</span></label>
+        <label class="opt-wrap"><input type="radio" name="material_roof" value="supafil" onchange="calc()"><span class="opt-btn">SUPAFIL LOFT PRO</span></label>
+        <label class="opt-wrap"><input type="radio" name="material_roof" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
       </div>
+      <span class="field-label">Plocha střechy (m²)</span>
+      <input type="number" name="qty_m2_roof" id="qty_m2_roof" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
+    </div>
+
+    <div id="ceiling-section" class="hidden type-section">
+      <span class="field-label">Materiál — Strop</span>
+      <div class="options">
+        <label class="opt-wrap"><input type="radio" name="material_ceiling" value="thermofloc" onchange="calc()"><span class="opt-btn">Thermofloc</span></label>
+        <label class="opt-wrap"><input type="radio" name="material_ceiling" value="supafil" onchange="calc()"><span class="opt-btn">SUPAFIL LOFT PRO</span></label>
+        <label class="opt-wrap"><input type="radio" name="material_ceiling" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
+      </div>
+      <span class="field-label">Plocha stropu (m²)</span>
+      <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" min="1" step="1" oninput="calc()">
+    </div>
+
+    <div id="windows-section" class="hidden type-section">
+      <span class="field-label">Počet oken</span>
+      <input type="number" name="qty_windows" id="qty_windows" value="1" min="1" step="1" oninput="calc()">
     </div>
 
     <span class="field-label">Zbývající dotace (Kč)</span>
     <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1000" oninput="calc()" placeholder="bez omezení">
     <div class="grant-info" style="margin-top:4px;">Výchozí 250 000 Kč; prázdné pole = bez omezení</div>
-
-    <div id="qty-m2-section" class="hidden">
-      <span class="field-label">Zastavěná plocha (m²)</span>
-      <input type="number" name="qty_m2" id="qty_m2" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
-    </div>
-
-    <div id="qty-windows-section" class="hidden">
-      <span class="field-label">Počet oken</span>
-      <input type="number" name="qty_windows" id="qty_windows" value="1" min="1" step="1" oninput="calc()">
-    </div>
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
@@ -229,12 +242,10 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
 
-function getRemK() {{
-  const v = parseFloat(document.getElementById('remaining_grant_k').value);
-  return isNaN(v) ? null : v;
-}}
-
+function getRemK()  {{ const v = parseFloat(document.getElementById('remaining_grant_k').value); return isNaN(v) ? null : v; }}
 function hasGrant() {{ return document.getElementById('grant_enabled').checked; }}
+function getSplit() {{ return document.querySelector('input[name=split]:checked')?.value; }}
+function fmt(n)     {{ return new Intl.NumberFormat('cs-CZ').format(Math.round(n)) + ' K\u010d'; }}
 
 function roofMinRate(qty) {{
   if (qty <= 50) return 1000;
@@ -242,91 +253,94 @@ function roofMinRate(qty) {{
   return 1000 + (750 - 1000) / (100 - 50) * (qty - 50);
 }}
 
-function fmt(n) {{
-  return new Intl.NumberFormat('cs-CZ').format(Math.round(n)) + ' Kč';
-}}
-
-function getType() {{ return document.querySelector('input[name=work_type]:checked')?.value; }}
-function getMat()  {{ return document.querySelector('input[name=material]:checked')?.value; }}
-function getSplit(){{ return document.querySelector('input[name=split]:checked')?.value; }}
-
-function onTypeChange() {{
-  const t = getType();
-  document.getElementById('material-section').classList.toggle('hidden', t === 'windows');
-  document.getElementById('qty-m2-section').classList.toggle('hidden', t === 'windows');
-  document.getElementById('qty-windows-section').classList.toggle('hidden', t !== 'windows');
-  document.getElementById('split-section').classList.remove('hidden');
-
-  const isWin = t === 'windows';
-  const opts = document.querySelectorAll('#split-opts label');
-  opts.forEach(l => l.classList.toggle('hidden', isWin));
-  document.getElementById('split-note').textContent = isWin ? 'Pro okna je vždy záloha 80 %, doplatek 20 %.' : '';
+function onTypesChange() {{
+  const hasRoof = document.getElementById('chk_roof').checked;
+  const hasCeil = document.getElementById('chk_ceiling').checked;
+  const hasWin  = document.getElementById('chk_windows').checked;
+  document.getElementById('roof-section').classList.toggle('hidden', !hasRoof);
+  document.getElementById('ceiling-section').classList.toggle('hidden', !hasCeil);
+  document.getElementById('windows-section').classList.toggle('hidden', !hasWin);
+  document.getElementById('split-section').classList.toggle('hidden', !(hasRoof || hasCeil || hasWin));
+  const winOnly = hasWin && !hasRoof && !hasCeil;
+  document.querySelectorAll('#split-opts label').forEach(l => l.classList.toggle('hidden', winOnly));
+  document.getElementById('split-note').textContent = winOnly ? 'Pro okna je vždy záloha 80 %, doplatek 20 %.' : '';
   calc();
 }}
 
 function calc() {{
-  const t = getType();
-  if (!t) return;
+  const hasRoof = document.getElementById('chk_roof').checked;
+  const hasCeil = document.getElementById('chk_ceiling').checked;
+  const hasWin  = document.getElementById('chk_windows').checked;
+  if (!hasRoof && !hasCeil && !hasWin) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
-  const qty = t === 'windows'
-    ? (parseFloat(document.getElementById('qty_windows').value) || 0)
-    : (parseFloat(document.getElementById('qty_m2').value) || 0);
+  const qRoof = hasRoof ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 0;
+  const qCeil = hasCeil ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 0;
+  const qWin  = hasWin  ? (parseFloat(document.getElementById('qty_windows').value)    || 0) : 0;
 
-  if (!qty) {{ document.getElementById('preview').classList.add('hidden'); return; }}
+  const lRoof = LISTED.roof * qRoof, lCeil = LISTED.ceiling * qCeil, lWin = LISTED.windows * qWin;
+  const lTotal = lRoof + lCeil + lWin;
+  if (lTotal === 0) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
-  const listed_total = LISTED[t] * qty;
-  let eligible, disc, floorHit = false;
+  let eRoof = 0, eCeil = 0, eWin = 0, floorHit = false;
   if (!hasGrant()) {{
-    eligible = t === 'roof' ? Math.round(roofMinRate(qty) * qty) : GRANT_RATE[t] * qty;
-    disc = Math.max(0, (1 - eligible / listed_total)) * 100;
+    eRoof = hasRoof ? Math.round(roofMinRate(qRoof) * qRoof) : 0;
+    eCeil = hasCeil ? GRANT_RATE.ceiling * qCeil : 0;
+    eWin  = hasWin  ? GRANT_RATE.windows * qWin  : 0;
   }} else {{
-    const formula_total = GRANT_RATE[t] * qty;
+    const fRoof = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWin;
+    const fTot = fRoof + fCeil + fWin;
     const remK = getRemK();
-    let grant_eligible = remK !== null ? Math.min(formula_total, remK) : formula_total;
-    if (t === 'roof') {{
-      const min_price = Math.round(roofMinRate(qty) * qty);
-      if (grant_eligible < min_price) {{ grant_eligible = min_price; floorHit = true; }}
+    const eTot = remK !== null ? Math.min(fTot, remK) : fTot;
+    if (fTot > 0) {{ eRoof = eTot * fRoof / fTot; eCeil = eTot * fCeil / fTot; eWin = eTot * fWin / fTot; }}
+    if (hasRoof && qRoof > 0) {{
+      const minR = Math.round(roofMinRate(qRoof) * qRoof);
+      if (eRoof < minR) {{ eRoof = minR; floorHit = true; }}
     }}
-    eligible = Math.min(grant_eligible, listed_total);
-    disc = Math.max(0, (1 - eligible / listed_total)) * 100;
+    eRoof = Math.min(eRoof, lRoof); eCeil = Math.min(eCeil, lCeil); eWin = Math.min(eWin, lWin);
   }}
-  const total = eligible;
+
+  const eTotal = eRoof + eCeil + eWin;
+  const dRoof  = lRoof  > 0 ? Math.max(0, (1 - eRoof / lRoof))  * 100 : 0;
+  const dCeil  = lCeil  > 0 ? Math.max(0, (1 - eCeil / lCeil))  * 100 : 0;
+  const dWin   = lWin   > 0 ? Math.max(0, (1 - eWin  / lWin))   * 100 : 0;
+  const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
+
+  document.getElementById('inp_elig_roof').value    = Math.round(eRoof);
+  document.getElementById('inp_elig_ceiling').value = Math.round(eCeil);
+  document.getElementById('inp_elig_windows').value = Math.round(eWin);
+  document.getElementById('inp_disc_roof').value    = dRoof.toFixed(4);
+  document.getElementById('inp_disc_ceiling').value = dCeil.toFixed(4);
+  document.getElementById('inp_disc_windows').value = dWin.toFixed(4);
 
   const grantOn = hasGrant();
-  document.getElementById('pv-base').textContent = fmt(listed_total);
-  document.getElementById('pv-eligible').textContent = fmt(eligible);
-  document.getElementById('pv-disc').textContent = disc.toFixed(2) + ' %';
-  document.getElementById('pv-total').textContent = fmt(total);
+  document.getElementById('pv-base').textContent     = fmt(lTotal);
+  document.getElementById('pv-eligible').textContent = fmt(eTotal);
+  document.getElementById('pv-disc').textContent     = dTotal.toFixed(2) + ' %';
+  document.getElementById('pv-total').textContent    = fmt(eTotal);
   document.getElementById('pv-eligible-row').classList.toggle('hidden', !grantOn);
   document.getElementById('pv-disc-row').classList.toggle('hidden', !grantOn);
 
-  if (t !== 'windows') {{
-    const unit = 'm²';
-    const eff_rate = Math.round(eligible / qty);
-    const rateRowEl = document.getElementById('pv-rate-row');
-    document.getElementById('pv-rate-label').textContent = `Efektivní cena / ${{unit}}`;
-    let rateText = new Intl.NumberFormat('cs-CZ').format(eff_rate) + ` Kč/${{unit}}`;
-    if (floorHit) {{
-      rateText += ' — minimální cena';
-      rateRowEl.style.color = '#c8670a';
-      rateRowEl.style.fontWeight = '600';
-    }} else {{
-      rateRowEl.style.color = '';
-      rateRowEl.style.fontWeight = '';
-    }}
+  const rateEl = document.getElementById('pv-rate-row');
+  const singleInsul = (hasRoof !== hasCeil) && !hasWin;
+  if (singleInsul) {{
+    const qty = hasRoof ? qRoof : qCeil, elig = hasRoof ? eRoof : eCeil;
+    const rate = qty > 0 ? Math.round(elig / qty) : 0;
+    let rateText = new Intl.NumberFormat('cs-CZ').format(rate) + ' Kč/m²';
+    if (floorHit) {{ rateText += ' \u2014 minim\u00e1ln\u00ed cena'; rateEl.style.color = '#c8670a'; rateEl.style.fontWeight = '600'; }}
+    else {{ rateEl.style.color = ''; rateEl.style.fontWeight = ''; }}
+    document.getElementById('pv-rate-label').textContent = 'Efektivn\u00ed cena / m\u00b2';
     document.getElementById('pv-rate').textContent = rateText;
-    rateRowEl.classList.remove('hidden');
-  }} else {{
-    document.getElementById('pv-rate-row').classList.add('hidden');
-  }}
+    rateEl.classList.remove('hidden');
+  }} else {{ rateEl.classList.add('hidden'); }}
 
-  const splitVal = t === 'windows' ? '80-20' : (getSplit() || '');
+  const winOnly  = hasWin && !hasRoof && !hasCeil;
+  const splitVal = winOnly ? '80-20' : (getSplit() || '');
   if (splitVal) {{
     const [a, b] = splitVal.split('-').map(Number);
-    document.getElementById('pv-zaloha-label').textContent = `Záloha (${{a}} %)`;
-    document.getElementById('pv-doplatek-label').textContent = `Doplatek (${{b}} %)`;
-    document.getElementById('pv-zaloha').textContent = fmt(Math.round(total * a / 100));
-    document.getElementById('pv-doplatek').textContent = fmt(Math.round(total * b / 100));
+    document.getElementById('pv-zaloha-label').textContent   = 'Z\u00e1loha (' + a + ' %)';
+    document.getElementById('pv-doplatek-label').textContent = 'Doplatek (' + b + ' %)';
+    document.getElementById('pv-zaloha').textContent         = fmt(Math.round(eTotal * a / 100));
+    document.getElementById('pv-doplatek').textContent       = fmt(Math.round(eTotal * b / 100));
     document.getElementById('pv-zaloha-row').classList.remove('hidden');
     document.getElementById('pv-doplatek-row').classList.remove('hidden');
   }} else {{
@@ -335,19 +349,29 @@ function calc() {{
   }}
 
   document.getElementById('preview').classList.remove('hidden');
-
-  document.getElementById('inp_eligible').value = eligible;
-  document.getElementById('inp_discount').value = disc.toFixed(4);
-
   checkSubmit();
 }}
 
 function checkSubmit() {{
-  const t = getType();
-  const split = t === 'windows' ? '80-20' : getSplit();
-  const mat = t === 'windows' ? true : getMat();
-  const eligible = document.getElementById('inp_eligible').value;
-  document.getElementById('submitBtn').disabled = !(t && mat && split && eligible);
+  const hasRoof = document.getElementById('chk_roof').checked;
+  const hasCeil = document.getElementById('chk_ceiling').checked;
+  const hasWin  = document.getElementById('chk_windows').checked;
+  if (!hasRoof && !hasCeil && !hasWin) {{ document.getElementById('submitBtn').disabled = true; return; }}
+  const matRoof = hasRoof ? document.querySelector('input[name=material_roof]:checked')?.value    : 'ok';
+  const matCeil = hasCeil ? document.querySelector('input[name=material_ceiling]:checked')?.value : 'ok';
+  const qRoof = hasRoof ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 1;
+  const qCeil = hasCeil ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 1;
+  const qWin  = hasWin  ? (parseFloat(document.getElementById('qty_windows').value)    || 0) : 1;
+  const winOnly = hasWin && !hasRoof && !hasCeil;
+  const split = winOnly ? '80-20' : getSplit();
+  const eTotal = parseFloat(document.getElementById('inp_elig_roof').value    || 0)
+               + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
+               + parseFloat(document.getElementById('inp_elig_windows').value || 0);
+  document.getElementById('submitBtn').disabled = !(
+    (!hasRoof || (matRoof && qRoof > 0)) &&
+    (!hasCeil || (matCeil && qCeil > 0)) &&
+    (!hasWin  || qWin > 0) && split && eTotal > 0
+  );
 }}
 
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); }});
@@ -360,12 +384,20 @@ document.getElementById('mainForm').addEventListener('change', () => {{ calc(); 
 def order_form_post(
     order_id: int = Form(...),
     key: str = Form(...),
-    work_type: str = Form(...),
-    material: str = Form(None),
-    qty_m2: str = Form(''),
+    has_roof: str = Form(''),
+    has_ceiling: str = Form(''),
+    has_windows: str = Form(''),
+    material_roof: str = Form(None),
+    material_ceiling: str = Form(None),
+    qty_m2_roof: str = Form(''),
+    qty_m2_ceiling: str = Form(''),
     qty_windows: str = Form(''),
-    eligible_amount: float = Form(...),
-    discount_pct: float = Form(...),
+    eligible_roof: float = Form(0),
+    eligible_ceiling: float = Form(0),
+    eligible_windows: float = Form(0),
+    discount_pct_roof: float = Form(0),
+    discount_pct_ceiling: float = Form(0),
+    discount_pct_windows: float = Form(0),
     split: str = Form(None),
 ):
     if key != SERVICE_KEY:
@@ -376,45 +408,75 @@ def order_form_post(
     def call(model, method, args, kw={}):
         return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
 
-    if work_type == 'windows':
-        ref = '4000'
-        qty = float(qty_windows or 1)
-        split_pct = (80, 20)
-    else:
-        suffix = 'A' if work_type == 'roof' else 'B'
-        ref_map = {'thermofloc': '3000', 'supafil': '3100', 'strikana': '3200'}
-        ref = ref_map[material] + suffix
-        qty = float(qty_m2 or 0)
-        if split:
-            a, b = split.split('-')
-            split_pct = (int(a), int(b))
-        else:
-            split_pct = (60, 40)
-
-    prods = call('product.product', 'search_read',
-                 [[['default_code', '=', ref]]],
-                 {'fields': ['id', 'name'], 'limit': 1})
-    if not prods:
-        raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
-    product_id = prods[0]['id']
-
-    # Listed prices are tax-inclusive; divide by 1.12 so Odoo's 12% DPH brings total back to eligible_amount
     TAX_RATE = 1.12
-    listed = {'roof': 2002, 'ceiling': 751, 'windows': 8000}[work_type]
+    LISTED = {'roof': 2002, 'ceiling': 751, 'windows': 8000}
+    REF_MAP = {'thermofloc': '3000', 'supafil': '3100', 'strikana': '3200'}
+
+    active_types = []
+    if has_roof:    active_types.append('roof')
+    if has_ceiling: active_types.append('ceiling')
+    if has_windows: active_types.append('windows')
+
+    if not active_types:
+        raise HTTPException(status_code=400, detail='Zadejte alespoň jeden typ práce')
+
+    # Determine split percentages
+    win_only = active_types == ['windows']
+    if win_only:
+        split_pct = (80, 20)
+    elif split:
+        a, b = split.split('-')
+        split_pct = (int(a), int(b))
+    else:
+        split_pct = (60, 40)
 
     doprava_prods = call('product.product', 'search_read',
                          [[['default_code', '=', 'DOPRAVA']]],
                          {'fields': ['id'], 'limit': 1})
 
-    order_lines = [
-        (5, 0, 0),
-        (0, 0, {
-            'product_id': product_id,
+    order_lines = [(5, 0, 0)]
+
+    if has_roof and material_roof:
+        ref = REF_MAP[material_roof] + 'A'
+        qty = float(qty_m2_roof or 0)
+        prods = call('product.product', 'search_read',
+                     [[['default_code', '=', ref]]], {'fields': ['id'], 'limit': 1})
+        if not prods:
+            raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
+        order_lines.append((0, 0, {
+            'product_id': prods[0]['id'],
             'product_uom_qty': qty,
-            'price_unit': round(listed / TAX_RATE, 2),
-            'discount': round(discount_pct, 4),
-        }),
-    ]
+            'price_unit': round(LISTED['roof'] / TAX_RATE, 2),
+            'discount': round(discount_pct_roof, 4),
+        }))
+
+    if has_ceiling and material_ceiling:
+        ref = REF_MAP[material_ceiling] + 'B'
+        qty = float(qty_m2_ceiling or 0)
+        prods = call('product.product', 'search_read',
+                     [[['default_code', '=', ref]]], {'fields': ['id'], 'limit': 1})
+        if not prods:
+            raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
+        order_lines.append((0, 0, {
+            'product_id': prods[0]['id'],
+            'product_uom_qty': qty,
+            'price_unit': round(LISTED['ceiling'] / TAX_RATE, 2),
+            'discount': round(discount_pct_ceiling, 4),
+        }))
+
+    if has_windows:
+        qty = float(qty_windows or 0)
+        prods = call('product.product', 'search_read',
+                     [[['default_code', '=', '4000']]], {'fields': ['id'], 'limit': 1})
+        if not prods:
+            raise HTTPException(status_code=400, detail='Produkt [4000] nenalezen v Odoo')
+        order_lines.append((0, 0, {
+            'product_id': prods[0]['id'],
+            'product_uom_qty': qty,
+            'price_unit': round(LISTED['windows'] / TAX_RATE, 2),
+            'discount': round(discount_pct_windows, 4),
+        }))
+
     if doprava_prods:
         order_lines.append((0, 0, {
             'product_id': doprava_prods[0]['id'],
@@ -423,7 +485,7 @@ def order_form_post(
             'discount': 0,
         }))
 
-    total = eligible_amount
+    total = eligible_roof + eligible_ceiling + eligible_windows
     zaloha   = round(total * split_pct[0] / 100)
     doplatek = round(total * split_pct[1] / 100)
 
@@ -431,7 +493,7 @@ def order_form_post(
         'order_line': order_lines,
         'x_studio_zaloha_kc': zaloha,
         'x_studio_doplatek_kc': doplatek,
-        'x_studio_vyse_dotace_kc': eligible_amount,
+        'x_studio_vyse_dotace_kc': total,
     }])
 
     # Generate contract PDF immediately after saving
@@ -485,7 +547,6 @@ def order_form_post(
     }}
   </script>
 </body></html>"""
-
 
 @app.get('/health')
 def health():
