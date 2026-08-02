@@ -205,7 +205,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label class="opt-wrap"><input type="radio" name="material_ceiling" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
       </div>
       <span class="field-label">Plocha stropu (m²)</span>
-      <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" min="1" step="1" oninput="calc()">
+      <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
     </div>
 
     <div id="windows-section" class="hidden type-section">
@@ -219,6 +219,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
       <div class="preview-row hidden" id="pv-rate-row"><span id="pv-rate-label">Efektivní cena / m²</span><span id="pv-rate">—</span></div>
+      <div class="preview-row hidden" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
@@ -317,6 +318,10 @@ function calc() {{
   document.getElementById('inp_disc_ceiling').value = dCeil.toFixed(4);
   document.getElementById('inp_disc_windows').value = dWin.toFixed(4);
   document.getElementById('inp_grant_amount').value = Math.round(grantUsed);
+
+  const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
+  document.getElementById('pv-disc').textContent = dTotal.toFixed(1) + ' %';
+  document.getElementById('pv-disc-row').classList.toggle('hidden', dTotal < 0.5);
 
   const grantOn = hasGrant();
   document.getElementById('pv-base').textContent  = fmt(lTotal);

@@ -163,25 +163,36 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     accept_track_changes(doc)
     set_page_header(doc, order.get('name', ''))
 
-    total_before_discount = sum(
-        (ln.get('price_unit') or 0) * (ln.get('product_uom_qty') or 0)
-        for ln in lines if not ln.get('display_type')
-    )
-    total_discount = total_before_discount - (order.get('amount_untaxed') or 0)
-    discount_pct = round(total_discount / total_before_discount * 100) if total_before_discount else 0
-
+    TAX = 1.12
+    LISTED_PRICES = {
+        '3000A': 2002, '3100A': 2002, '3200A': 2002,
+        '3000B': 751,  '3100B': 751,  '3200B': 751,
+        '4000': 8000,
+    }
     insul_codes = {'3000A', '3100A', '3200A', '3000B', '3100B', '3200B'}
     has_windows = False
     insul_area = 0.0
+    real_listed_excl = 0.0
+    doprava_subtotal = 0.0
     for ln in lines:
         if ln.get('display_type') or ln.get('is_downpayment'):
             continue
         code = re.sub(r'^\[(.+?)\].*', r'\1', ln['product_id'][1]) if isinstance(ln.get('product_id'), list) else ''
+        qty = ln.get('product_uom_qty') or 0
         if code == '4000':
             has_windows = True
         if code in insul_codes:
-            insul_area += ln.get('product_uom_qty') or 0
+            insul_area += qty
+        if code in LISTED_PRICES:
+            real_listed_excl += LISTED_PRICES[code] * qty / TAX
+        elif code == 'D':
+            doprava_subtotal += ln.get('price_subtotal') or 0
     dotace_area = '' if has_windows else (str(int(insul_area)) if insul_area else '')
+
+    total_real_listed_excl = real_listed_excl + doprava_subtotal
+    amount_untaxed = order.get('amount_untaxed') or 0
+    real_discount_excl = max(0.0, total_real_listed_excl - amount_untaxed)
+    discount_pct = round(real_discount_excl / total_real_listed_excl * 100) if total_real_listed_excl else 0
 
     replacements = {
         '{code}':                 order.get('name', ''),
@@ -201,11 +212,11 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
             ] if p.strip()
         ),
         '{totalAmountWithTax}':   fmt_czk(order.get('amount_total')),
-        '{totalAmount}':          fmt_czk(order.get('amount_untaxed')),
+        '{totalAmount}':          fmt_czk(amount_untaxed),
         '{taxAmount}':            fmt_czk(order.get('amount_tax')),
-        '{priceWithoutDiscount}': fmt_czk(total_before_discount),
+        '{priceWithoutDiscount}': fmt_czk(total_real_listed_excl),
         '{discountPercent}':      str(discount_pct),
-        '{discount}':             fmt_czk(total_discount),
+        '{discount}':             fmt_czk(real_discount_excl),
         '{_1_Zalohova_94eb7}':    fmt_czk(order.get('x_studio_zaloha_kc')),
         '{Termin_rea_c5929}':     fmt_date(order.get('x_studio_termin_zalohy_1')),
         '{Doplatek_3d201}':       fmt_czk(order.get('x_studio_doplatek_kc')),
