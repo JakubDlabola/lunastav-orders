@@ -195,6 +195,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       </div>
       <span class="field-label">Plocha střechy (m²)</span>
       <input type="number" name="qty_m2_roof" id="qty_m2_roof" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
+      <span class="field-label">Doplňkové práce</span>
+      <div class="options">
+        <label class="opt-wrap"><input type="checkbox" name="extra_5000a" value="1"><span class="opt-btn">Otevření a zavření falcované střechy</span></label>
+        <label class="opt-wrap"><input type="checkbox" name="extra_5000b" value="1"><span class="opt-btn">Otevření a zavření PVC folie</span></label>
+      </div>
     </div>
 
     <div id="ceiling-section" class="hidden type-section">
@@ -206,6 +211,10 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       </div>
       <span class="field-label">Plocha stropu (m²)</span>
       <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
+      <span class="field-label">Kostrukce pochozí plochy (m²)</span>
+      <input type="number" name="qty_5100" id="qty_5100" min="0" step="1" placeholder="nezahrnout">
+      <span class="field-label">Konstrukce revizní lávky (m)</span>
+      <input type="number" name="qty_5101" id="qty_5101" min="0" step="1" placeholder="nezahrnout">
     </div>
 
     <div id="windows-section" class="hidden type-section">
@@ -413,6 +422,10 @@ def order_form_post(
     discount_pct_windows: float = Form(0),
     grant_amount: float = Form(0),
     split: str = Form(None),
+    extra_5000a: str = Form(''),
+    extra_5000b: str = Form(''),
+    qty_5100: str = Form(''),
+    qty_5101: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -504,6 +517,36 @@ def order_form_post(
             'price_unit': round(doprava_price / TAX_RATE, 2),
             'discount': 0,
         }))
+
+    # Extra add-on products (no grant/discount involvement)
+    extra_needed = []
+    if has_roof and extra_5000a: extra_needed.append('5000A')
+    if has_roof and extra_5000b: extra_needed.append('5000B')
+    qty_5100_f = float(qty_5100 or 0)
+    qty_5101_f = float(qty_5101 or 0)
+    if has_ceiling and qty_5100_f > 0: extra_needed.append('5100')
+    if has_ceiling and qty_5101_f > 0: extra_needed.append('5101')
+    if extra_needed:
+        extra_prods = call('product.product', 'search_read',
+                           [[['default_code', 'in', extra_needed]]],
+                           {'fields': ['id', 'default_code', 'lst_price'], 'limit': 10})
+        extra_map = {p['default_code']: p for p in extra_prods}
+        for code in ['5000A', '5000B']:
+            if code in extra_map:
+                order_lines.append((0, 0, {
+                    'product_id': extra_map[code]['id'],
+                    'product_uom_qty': 1,
+                    'price_unit': extra_map[code].get('lst_price', 0),
+                    'discount': 0,
+                }))
+        for code, qty_f in [('5100', qty_5100_f), ('5101', qty_5101_f)]:
+            if code in extra_map:
+                order_lines.append((0, 0, {
+                    'product_id': extra_map[code]['id'],
+                    'product_uom_qty': qty_f,
+                    'price_unit': extra_map[code].get('lst_price', 0),
+                    'discount': 0,
+                }))
 
     total = eligible_roof + eligible_ceiling + eligible_windows + doprava_price
     zaloha   = round(total * split_pct[0] / 100)
