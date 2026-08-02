@@ -171,6 +171,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <input type="hidden" name="discount_pct_roof"    id="inp_disc_roof"    value="0">
     <input type="hidden" name="discount_pct_ceiling" id="inp_disc_ceiling" value="0">
     <input type="hidden" name="discount_pct_windows" id="inp_disc_windows" value="0">
+    <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
 
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
       <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
@@ -213,13 +214,12 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     <span class="field-label">Zbývající dotace (Kč)</span>
     <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1000" oninput="calc()" placeholder="bez omezení">
-    <div class="grant-info" style="margin-top:4px;">Výchozí 250 000 Kč; prázdné pole = bez omezení</div>
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
       <div class="preview-row hidden" id="pv-rate-row"><span id="pv-rate-label">Efektivní cena / m²</span><span id="pv-rate">—</span></div>
-      <div class="preview-row grant" id="pv-eligible-row"><span>Způsobilé náklady (dotace)</span><span id="pv-eligible">—</span></div>
-      <div class="preview-row" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
+      <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
+      <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
       <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
       <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
@@ -281,17 +281,24 @@ function calc() {{
   const lTotal = lRoof + lCeil + lWin;
   if (lTotal === 0) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
-  let eRoof = 0, eCeil = 0, eWin = 0, floorHit = false;
+  const fRoof = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWin;
+  const fTot = fRoof + fCeil + fWin;
+
+  const DOPRAVA = 250;
+  let eRoof = 0, eCeil = 0, eWin = 0, grantReceived = 0, floorHit = false;
   if (!hasGrant()) {{
     eRoof = hasRoof ? Math.round(roofMinRate(qRoof) * qRoof) : 0;
     eCeil = hasCeil ? GRANT_RATE.ceiling * qCeil : 0;
     eWin  = hasWin  ? GRANT_RATE.windows * qWin  : 0;
+    grantReceived = 0;
   }} else {{
-    const fRoof = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWin;
-    const fTot = fRoof + fCeil + fWin;
     const remK = getRemK();
-    const eTot = remK !== null ? Math.min(fTot, remK) : fTot;
-    if (fTot > 0) {{ eRoof = eTot * fRoof / fTot; eCeil = eTot * fCeil / fTot; eWin = eTot * fWin / fTot; }}
+    grantReceived = remK !== null ? Math.min(fTot, remK) : fTot;
+    if (fTot > 0) {{ eRoof = grantReceived * fRoof / fTot; eCeil = grantReceived * fCeil / fTot; eWin = grantReceived * fWin / fTot; }}
+    // enforce minimum 3% discount on each type
+    if (lRoof > 0) eRoof = Math.min(eRoof, lRoof * 0.97);
+    if (lCeil > 0) eCeil = Math.min(eCeil, lCeil * 0.97);
+    if (lWin  > 0) eWin  = Math.min(eWin,  lWin  * 0.97);
     if (hasRoof && qRoof > 0) {{
       const minR = Math.round(roofMinRate(qRoof) * qRoof);
       if (eRoof < minR) {{ eRoof = minR; floorHit = true; }}
@@ -300,10 +307,11 @@ function calc() {{
   }}
 
   const eTotal = eRoof + eCeil + eWin;
+  const grantUsed = Math.min(grantReceived, eTotal);
+  const clientPays = Math.max(0, eTotal - grantUsed) + DOPRAVA;
   const dRoof  = lRoof  > 0 ? Math.max(0, (1 - eRoof / lRoof))  * 100 : 0;
   const dCeil  = lCeil  > 0 ? Math.max(0, (1 - eCeil / lCeil))  * 100 : 0;
   const dWin   = lWin   > 0 ? Math.max(0, (1 - eWin  / lWin))   * 100 : 0;
-  const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
 
   document.getElementById('inp_elig_roof').value    = Math.round(eRoof);
   document.getElementById('inp_elig_ceiling').value = Math.round(eCeil);
@@ -311,21 +319,24 @@ function calc() {{
   document.getElementById('inp_disc_roof').value    = dRoof.toFixed(4);
   document.getElementById('inp_disc_ceiling').value = dCeil.toFixed(4);
   document.getElementById('inp_disc_windows').value = dWin.toFixed(4);
+  document.getElementById('inp_grant_amount').value = Math.round(grantUsed);
 
   const grantOn = hasGrant();
-  document.getElementById('pv-base').textContent     = fmt(lTotal);
-  document.getElementById('pv-eligible').textContent = fmt(eTotal);
-  document.getElementById('pv-disc').textContent     = dTotal.toFixed(2) + ' %';
-  document.getElementById('pv-total').textContent    = fmt(eTotal);
-  document.getElementById('pv-eligible-row').classList.toggle('hidden', !grantOn);
-  document.getElementById('pv-disc-row').classList.toggle('hidden', !grantOn);
+  document.getElementById('pv-base').textContent  = fmt(lTotal);
+  document.getElementById('pv-total').textContent = fmt(eTotal + DOPRAVA);
+  document.getElementById('pv-grant-row').classList.toggle('hidden', !grantOn);
+  document.getElementById('pv-client-row').classList.toggle('hidden', !grantOn);
+  if (grantOn) {{
+    document.getElementById('pv-grant').textContent  = fmt(grantUsed);
+    document.getElementById('pv-client').textContent = fmt(clientPays);
+  }}
 
   const rateEl = document.getElementById('pv-rate-row');
   const singleInsul = (hasRoof !== hasCeil) && !hasWin;
   if (singleInsul) {{
     const qty = hasRoof ? qRoof : qCeil, elig = hasRoof ? eRoof : eCeil;
     const rate = qty > 0 ? Math.round(elig / qty) : 0;
-    let rateText = new Intl.NumberFormat('cs-CZ').format(rate) + ' Kč/m²';
+    let rateText = new Intl.NumberFormat('cs-CZ').format(rate) + ' K\u010d/m\u00b2';
     if (floorHit) {{ rateText += ' \u2014 minim\u00e1ln\u00ed cena'; rateEl.style.color = '#c8670a'; rateEl.style.fontWeight = '600'; }}
     else {{ rateEl.style.color = ''; rateEl.style.fontWeight = ''; }}
     document.getElementById('pv-rate-label').textContent = 'Efektivn\u00ed cena / m\u00b2';
@@ -339,8 +350,8 @@ function calc() {{
     const [a, b] = splitVal.split('-').map(Number);
     document.getElementById('pv-zaloha-label').textContent   = 'Z\u00e1loha (' + a + ' %)';
     document.getElementById('pv-doplatek-label').textContent = 'Doplatek (' + b + ' %)';
-    document.getElementById('pv-zaloha').textContent         = fmt(Math.round(eTotal * a / 100));
-    document.getElementById('pv-doplatek').textContent       = fmt(Math.round(eTotal * b / 100));
+    document.getElementById('pv-zaloha').textContent         = fmt(Math.round((eTotal + DOPRAVA) * a / 100));
+    document.getElementById('pv-doplatek').textContent       = fmt(Math.round((eTotal + DOPRAVA) * b / 100));
     document.getElementById('pv-zaloha-row').classList.remove('hidden');
     document.getElementById('pv-doplatek-row').classList.remove('hidden');
   }} else {{
@@ -398,6 +409,7 @@ def order_form_post(
     discount_pct_roof: float = Form(0),
     discount_pct_ceiling: float = Form(0),
     discount_pct_windows: float = Form(0),
+    grant_amount: float = Form(0),
     split: str = Form(None),
 ):
     if key != SERVICE_KEY:
@@ -481,19 +493,22 @@ def order_form_post(
         order_lines.append((0, 0, {
             'product_id': doprava_prods[0]['id'],
             'product_uom_qty': 1,
-            'price_unit': 1,
+            'price_unit': round(250 / TAX_RATE, 2),
             'discount': 0,
         }))
 
-    total = eligible_roof + eligible_ceiling + eligible_windows
+    DOPRAVA_AMT = 250  # Kč incl. DPH, always client-pays
+    total = eligible_roof + eligible_ceiling + eligible_windows + DOPRAVA_AMT
     zaloha   = round(total * split_pct[0] / 100)
     doplatek = round(total * split_pct[1] / 100)
+    client_pays = round(total - grant_amount)
 
     call('sale.order', 'write', [[order_id], {
         'order_line': order_lines,
         'x_studio_zaloha_kc': zaloha,
         'x_studio_doplatek_kc': doplatek,
-        'x_studio_vyse_dotace_kc': total,
+        'x_studio_vyse_dotace_kc': round(grant_amount),
+        'x_studio_cena_po_odecteni_dotace': max(0, client_pays),
     }])
 
     # Generate contract PDF immediately after saving
