@@ -295,10 +295,6 @@ function calc() {{
     const remK = getRemK();
     grantReceived = remK !== null ? Math.min(fTot, remK) : fTot;
     if (fTot > 0) {{ eRoof = grantReceived * fRoof / fTot; eCeil = grantReceived * fCeil / fTot; eWin = grantReceived * fWin / fTot; }}
-    // enforce minimum 3% discount on each type
-    if (lRoof > 0) eRoof = Math.min(eRoof, lRoof * 0.97);
-    if (lCeil > 0) eCeil = Math.min(eCeil, lCeil * 0.97);
-    if (lWin  > 0) eWin  = Math.min(eWin,  lWin  * 0.97);
     if (hasRoof && qRoof > 0) {{
       const minR = Math.round(roofMinRate(qRoof) * qRoof);
       if (eRoof < minR) {{ eRoof = minR; floorHit = true; }}
@@ -448,6 +444,8 @@ def order_form_post(
 
     order_lines = [(5, 0, 0)]
 
+    COSMETIC_DISC = 3.0  # always show 3% discount; price_unit inflated to compensate
+
     if has_roof and material_roof:
         ref = REF_MAP[material_roof] + 'A'
         qty = float(qty_m2_roof or 0)
@@ -455,11 +453,12 @@ def order_form_post(
                      [[['default_code', '=', ref]]], {'fields': ['id'], 'limit': 1})
         if not prods:
             raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
+        unit_price_incl = (eligible_roof / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
         order_lines.append((0, 0, {
             'product_id': prods[0]['id'],
             'product_uom_qty': qty,
-            'price_unit': round(LISTED['roof'] / TAX_RATE, 2),
-            'discount': round(discount_pct_roof, 4),
+            'price_unit': round(unit_price_incl / TAX_RATE, 2),
+            'discount': COSMETIC_DISC,
         }))
 
     if has_ceiling and material_ceiling:
@@ -469,11 +468,12 @@ def order_form_post(
                      [[['default_code', '=', ref]]], {'fields': ['id'], 'limit': 1})
         if not prods:
             raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
+        unit_price_incl = (eligible_ceiling / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
         order_lines.append((0, 0, {
             'product_id': prods[0]['id'],
             'product_uom_qty': qty,
-            'price_unit': round(LISTED['ceiling'] / TAX_RATE, 2),
-            'discount': round(discount_pct_ceiling, 4),
+            'price_unit': round(unit_price_incl / TAX_RATE, 2),
+            'discount': COSMETIC_DISC,
         }))
 
     if has_windows:
@@ -482,11 +482,12 @@ def order_form_post(
                      [[['default_code', '=', '4000']]], {'fields': ['id'], 'limit': 1})
         if not prods:
             raise HTTPException(status_code=400, detail='Produkt [4000] nenalezen v Odoo')
+        unit_price_incl = (eligible_windows / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
         order_lines.append((0, 0, {
             'product_id': prods[0]['id'],
             'product_uom_qty': qty,
-            'price_unit': round(LISTED['windows'] / TAX_RATE, 2),
-            'discount': round(discount_pct_windows, 4),
+            'price_unit': round(unit_price_incl / TAX_RATE, 2),
+            'discount': COSMETIC_DISC,
         }))
 
     if doprava_prods:
