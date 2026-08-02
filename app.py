@@ -228,7 +228,6 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 <script>
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
-const SYM = 250;
 
 function getRemK() {{
   const v = parseFloat(document.getElementById('remaining_grant_k').value);
@@ -291,7 +290,7 @@ function calc() {{
     eligible = Math.min(grant_eligible, listed_total);
     disc = Math.max(0, (1 - eligible / listed_total)) * 100;
   }}
-  const total = eligible + SYM;
+  const total = eligible;
 
   const grantOn = hasGrant();
   document.getElementById('pv-base').textContent = fmt(listed_total);
@@ -399,30 +398,32 @@ def order_form_post(
         raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
     product_id = prods[0]['id']
 
-    sym_prods = call('product.product', 'search_read',
-                     [[['default_code', '=', 'PRACE']]],
-                     {'fields': ['id'], 'limit': 1})
-
+    # Listed prices are tax-inclusive; divide by 1.12 so Odoo's 12% DPH brings total back to eligible_amount
+    TAX_RATE = 1.12
     listed = {'roof': 2002, 'ceiling': 751, 'windows': 8000}[work_type]
+
+    doprava_prods = call('product.product', 'search_read',
+                         [[['default_code', '=', 'DOPRAVA']]],
+                         {'fields': ['id'], 'limit': 1})
 
     order_lines = [
         (5, 0, 0),
         (0, 0, {
             'product_id': product_id,
             'product_uom_qty': qty,
-            'price_unit': listed,
+            'price_unit': round(listed / TAX_RATE, 2),
             'discount': round(discount_pct, 4),
         }),
     ]
-    if sym_prods:
+    if doprava_prods:
         order_lines.append((0, 0, {
-            'product_id': sym_prods[0]['id'],
+            'product_id': doprava_prods[0]['id'],
             'product_uom_qty': 1,
-            'price_unit': 250,
+            'price_unit': 1,
             'discount': 0,
         }))
 
-    total = eligible_amount + 250
+    total = eligible_amount
     zaloha   = round(total * split_pct[0] / 100)
     doplatek = round(total * split_pct[1] / 100)
 
