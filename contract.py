@@ -11,6 +11,10 @@ from lxml import etree
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
 
+# Inline bold markers — control chars never present in normal text
+_BOLD_ON  = '\x01B\x01'
+_BOLD_OFF = '\x01/B\x01'
+
 
 def fmt_czk(value):
     if not value:
@@ -42,6 +46,18 @@ def _make_bold(run):
         etree.SubElement(rPr, qn('w:b'))
 
 
+def _build_run_text(r, text):
+    """Append text (with embedded \\t for tabs) into run r."""
+    segments = text.split('\t')
+    for i, seg in enumerate(segments):
+        if seg:
+            t = etree.SubElement(r, qn('w:t'))
+            t.text = seg
+            t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+        if i < len(segments) - 1:
+            etree.SubElement(r, qn('w:tab'))
+
+
 def replace_in_element(element, replacements, bold_keys=None):
     """Replace placeholder text across all runs in every paragraph of an XML element."""
     for p in element.iter(qn('w:p')):
@@ -49,7 +65,6 @@ def replace_in_element(element, replacements, bold_keys=None):
         if not runs:
             continue
 
-        # Include tab elements as \t so they survive the replacement round-trip
         full_text = ''
         for r in runs:
             for child in r:
@@ -61,34 +76,46 @@ def replace_in_element(element, replacements, bold_keys=None):
         if not any(k in full_text for k in replacements):
             continue
 
-        should_bold = bold_keys and any(k in full_text for k in bold_keys)
+        should_bold = bool(bold_keys and any(k in full_text for k in bold_keys))
 
         new_text = full_text
         for k, v in replacements.items():
             new_text = new_text.replace(k, str(v))
 
-        # Rebuild first run: remove its existing text/tab children, then
-        # re-insert them as proper <w:t> and <w:tab/> elements
+        # Clear text/tab children from all runs
         first_r = runs[0]
-        for child in list(first_r):
-            if child.tag in (qn('w:t'), qn('w:tab')):
-                first_r.remove(child)
-        if should_bold:
-            _make_bold(first_r)
-        segments = new_text.split('\t')
-        for i, seg in enumerate(segments):
-            if seg:
-                t = etree.SubElement(first_r, qn('w:t'))
-                t.text = seg
-                t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-            if i < len(segments) - 1:
-                etree.SubElement(first_r, qn('w:tab'))
-
-        # Clear text/tab children from all other runs
-        for r in runs[1:]:
+        for r in runs:
             for child in list(r):
                 if child.tag in (qn('w:t'), qn('w:tab')):
                     r.remove(child)
+
+        if _BOLD_ON in new_text:
+            # Split on bold markers and emit one run per segment with correct bold state
+            parts = re.split(f'({re.escape(_BOLD_ON)}|{re.escape(_BOLD_OFF)})', new_text)
+            parent = first_r.getparent()
+            idx = list(parent).index(first_r)
+            parent.remove(first_r)
+            current_bold = should_bold
+            offset = 0
+            for part in parts:
+                if part == _BOLD_ON:
+                    current_bold = True
+                elif part == _BOLD_OFF:
+                    current_bold = should_bold
+                elif part:
+                    r = copy.deepcopy(first_r)
+                    for child in list(r):
+                        if child.tag in (qn('w:t'), qn('w:tab')):
+                            r.remove(child)
+                    if current_bold:
+                        _make_bold(r)
+                    _build_run_text(r, part)
+                    parent.insert(idx + offset, r)
+                    offset += 1
+        else:
+            if should_bold:
+                _make_bold(first_r)
+            _build_run_text(first_r, new_text)
 
 
 def accept_track_changes(doc):
@@ -205,11 +232,15 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{companyTel1}':          partner.get('phone', '') or '',
         '{name}':                 order.get('x_studio_popis_dila', '') or '',
         '{Popis_dila_512bd}':     order.get('x_studio_popis_dila', '') or '',
-        '{Adresa_rea_db304}':     order.get('x_studio_adresa_realizace') or ' '.join(
-            p for p in [
-                partner.get('street', '') or '',
-                (partner.get('zip', '') or '') + ' ' + (partner.get('city', '') or ''),
-            ] if p.strip()
+        '{Adresa_rea_db304}':     (
+            _BOLD_ON + 'shodné s trvalou adresou' + _BOLD_OFF
+            if order.get('x_studio_adresa_realizace') == 'shodné s trvalou adresou'
+            else (order.get('x_studio_adresa_realizace') or ' '.join(
+                p for p in [
+                    partner.get('street', '') or '',
+                    (partner.get('zip', '') or '') + ' ' + (partner.get('city', '') or ''),
+                ] if p.strip()
+            ))
         ),
         '{totalAmountWithTax}':   fmt_czk(order.get('amount_total')),
         '{totalAmount}':          fmt_czk(amount_untaxed),

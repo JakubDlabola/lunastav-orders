@@ -156,6 +156,12 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     button[type=submit]:disabled {{ background: #ccc; cursor: default; }}
     .hidden {{ display: none !important; }}
     .grant-info {{ font-size: 13px; color: #555; margin-top: 4px; }}
+    .tab-bar {{ display: flex; gap: 0; margin-bottom: 24px; border-bottom: 2px solid #eee; }}
+    .tab-btn {{ background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; padding: 9px 20px; font-size: 14px; font-weight: 500; cursor: pointer; color: #aaa; transition: color .15s, border-color .15s; }}
+    .tab-btn.active {{ color: #c8a840; border-bottom-color: #c8a840; }}
+    .tab-pane {{ display: block; }}
+    .tab-pane.hidden {{ display: none !important; }}
+    input[type=text] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
   </style>
 </head>
 <body>
@@ -174,6 +180,12 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <input type="hidden" name="discount_pct_windows" id="inp_disc_windows" value="0">
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
 
+    <div class="tab-bar">
+      <button type="button" class="tab-btn active" onclick="showTab(this,'tab-main')">Objednávka</button>
+      <button type="button" class="tab-btn" onclick="showTab(this,'tab-misc')">Upřesnění</button>
+    </div>
+
+    <div id="tab-main" class="tab-pane">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
       <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
       <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
@@ -244,6 +256,22 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label class="opt-wrap"><input type="radio" name="split" value="0-100"><span class="opt-btn">Bez zálohy</span></label>
       </div>
       <div class="split-note" id="split-note"></div>
+    </div>
+    </div>
+
+    <div id="tab-misc" class="tab-pane hidden">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <input type="checkbox" id="addr_same" name="addr_same" value="1" checked
+               onchange="document.getElementById('addr-custom').classList.toggle('hidden',this.checked)"
+               style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+        <label for="addr_same" style="font-size:14px;cursor:pointer;">Adresa realizace se shoduje s adresou trvalého bydliště</label>
+      </div>
+      <div id="addr-custom" class="hidden">
+        <span class="field-label">Adresa realizace</span>
+        <input type="text" name="adresa_realizace" id="adresa_realizace" placeholder="Ulice, PSČ Město">
+      </div>
+      <span class="field-label" style="margin-top:20px;">Popis díla</span>
+      <input type="text" name="popis_dila" id="popis_dila" placeholder="">
     </div>
 
     <button type="submit" id="submitBtn" disabled>Vytvořit objednávku</button>
@@ -397,6 +425,13 @@ function checkSubmit() {{
 }}
 
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); }});
+
+function showTab(btn, id) {{
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}}
 </script>
 </body>
 </html>"""
@@ -426,6 +461,9 @@ def order_form_post(
     extra_5000b: str = Form(''),
     qty_5100: str = Form(''),
     qty_5101: str = Form(''),
+    addr_same: str = Form(''),
+    adresa_realizace: str = Form(''),
+    popis_dila: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -553,12 +591,15 @@ def order_form_post(
     doplatek = round(total * split_pct[1] / 100)
     client_pays = round(total - grant_amount)
 
+    addr_value = 'shodné s trvalou adresou' if addr_same else (adresa_realizace or '')
     call('sale.order', 'write', [[order_id], {
         'order_line': order_lines,
         'x_studio_zaloha_kc': zaloha,
         'x_studio_doplatek_kc': doplatek,
         'x_studio_vyse_dotace_kc': round(grant_amount),
         'x_studio_cena_po_odecteni_dotace': max(0, client_pays),
+        'x_studio_adresa_realizace': addr_value,
+        'x_studio_popis_dila': popis_dila or '',
     }])
 
     # Generate contract PDF immediately after saving
