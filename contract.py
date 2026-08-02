@@ -230,18 +230,16 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{companyCity}':          partner.get('city', '') or '',
         '{companyEmail}':         partner.get('email', '') or '',
         '{companyTel1}':          partner.get('phone', '') or '',
-        '{name}':                 order.get('x_studio_popis_dila', '') or '',
-        '{Popis_dila_512bd}':     order.get('x_studio_popis_dila', '') or '',
-        '{Adresa_rea_db304}':     (
-            _BOLD_ON + 'shodné s trvalou adresou' + _BOLD_OFF
-            if order.get('x_studio_adresa_realizace') == 'shodné s trvalou adresou'
-            else (order.get('x_studio_adresa_realizace') or ' '.join(
+        '{name}':                 '',
+        '{Popis_dila_512bd}':     _BOLD_ON + (order.get('x_studio_popis_dila', '') or '') + _BOLD_OFF,
+        '{Adresa_rea_db304}':     _BOLD_ON + (
+            order.get('x_studio_adresa_realizace') or ' '.join(
                 p for p in [
                     partner.get('street', '') or '',
                     (partner.get('zip', '') or '') + ' ' + (partner.get('city', '') or ''),
                 ] if p.strip()
-            ))
-        ),
+            )
+        ) + _BOLD_OFF,
         '{totalAmountWithTax}':   fmt_czk(order.get('amount_total')),
         '{totalAmount}':          fmt_czk(amount_untaxed),
         '{taxAmount}':            fmt_czk(order.get('amount_tax')),

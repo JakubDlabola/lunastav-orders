@@ -592,12 +592,14 @@ def order_form_post(
     client_pays = round(total - grant_amount)
 
     addr_value = 'shodné s trvalou adresou' if addr_same else (adresa_realizace or '')
+    insul_area = (float(qty_m2_roof or 0) if has_roof else 0) + (float(qty_m2_ceiling or 0) if has_ceiling else 0)
     call('sale.order', 'write', [[order_id], {
         'order_line': order_lines,
         'x_studio_zaloha_kc': zaloha,
         'x_studio_doplatek_kc': doplatek,
         'x_studio_vyse_dotace_kc': round(grant_amount),
         'x_studio_cena_po_odecteni_dotace': max(0, client_pays),
+        'x_studio_float_field_45q_1jsh2tmcd': insul_area,
         'x_studio_adresa_realizace': addr_value,
         'x_studio_popis_dila': popis_dila or '',
     }])
