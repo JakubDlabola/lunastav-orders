@@ -1,5 +1,6 @@
 import base64
 import os
+import random
 import re
 import xmlrpc.client
 
@@ -439,8 +440,9 @@ def order_form_post(
         split_pct = (60, 40)
 
     doprava_prods = call('product.product', 'search_read',
-                         [[['default_code', '=', 'DOPRAVA']]],
+                         [[['default_code', '=', 'D']]],
                          {'fields': ['id'], 'limit': 1})
+    doprava_price = random.randint(200, 300)
 
     order_lines = [(5, 0, 0)]
 
@@ -494,12 +496,11 @@ def order_form_post(
         order_lines.append((0, 0, {
             'product_id': doprava_prods[0]['id'],
             'product_uom_qty': 1,
-            'price_unit': round(250 / TAX_RATE, 2),
+            'price_unit': round(doprava_price / TAX_RATE, 2),
             'discount': 0,
         }))
 
-    DOPRAVA_AMT = 250  # Kč incl. DPH, always client-pays
-    total = eligible_roof + eligible_ceiling + eligible_windows + DOPRAVA_AMT
+    total = eligible_roof + eligible_ceiling + eligible_windows + doprava_price
     zaloha   = round(total * split_pct[0] / 100)
     doplatek = round(total * split_pct[1] / 100)
     client_pays = round(total - grant_amount)

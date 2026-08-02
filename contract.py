@@ -168,6 +168,20 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         for ln in lines if not ln.get('display_type')
     )
     total_discount = total_before_discount - (order.get('amount_untaxed') or 0)
+    discount_pct = round(total_discount / total_before_discount * 100) if total_before_discount else 0
+
+    insul_codes = {'3000A', '3100A', '3200A', '3000B', '3100B', '3200B'}
+    has_windows = False
+    insul_area = 0.0
+    for ln in lines:
+        if ln.get('display_type') or ln.get('is_downpayment'):
+            continue
+        code = re.sub(r'^\[(.+?)\].*', r'\1', ln['product_id'][1]) if isinstance(ln.get('product_id'), list) else ''
+        if code == '4000':
+            has_windows = True
+        if code in insul_codes:
+            insul_area += ln.get('product_uom_qty') or 0
+    dotace_area = '' if has_windows else (str(int(insul_area)) if insul_area else '')
 
     replacements = {
         '{code}':                 order.get('name', ''),
@@ -190,7 +204,7 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{totalAmount}':          fmt_czk(order.get('amount_untaxed')),
         '{taxAmount}':            fmt_czk(order.get('amount_tax')),
         '{priceWithoutDiscount}': fmt_czk(total_before_discount),
-        '{discountPercent}':      '0',
+        '{discountPercent}':      str(discount_pct),
         '{discount}':             fmt_czk(total_discount),
         '{_1_Zalohova_94eb7}':    fmt_czk(order.get('x_studio_zaloha_kc')),
         '{Termin_rea_c5929}':     fmt_date(order.get('x_studio_termin_zalohy_1')),
@@ -198,7 +212,7 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{Platebni_p_0757d}':     fmt_date(order.get('x_studio_termin_dokonceni_1')),
         '{Stavebni_p_5c162}':     order.get('x_studio_stavebni_pripravenost', '') or '',
         '{scheduledEnd}':         fmt_date(order.get('x_studio_datum_podpisu_smlouvy')),
-        '{Dotace_se__61533}':     str(order.get('x_studio_float_field_45q_1jsh2tmcd') or ''),
+        '{Dotace_se__61533}':     dotace_area,
         '{Vyse_dotac_6d201}':     fmt_czk(order.get('x_studio_vyse_dotace_kc')) + '\xa0',
         '{Konecna_ce_0d59a}':     fmt_czk(order.get('x_studio_cena_po_odecteni_dotace')) + '\xa0',
         '{currency}':             'Kč',
