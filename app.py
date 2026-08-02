@@ -308,7 +308,7 @@ function calc() {{
 
   const eTotal = eRoof + eCeil + eWin;
   const grantUsed = Math.min(grantReceived, eTotal);
-  const clientPays = Math.max(0, eTotal - grantUsed) + DOPRAVA;
+  const clientPays = Math.max(DOPRAVA, eTotal + DOPRAVA - grantReceived);
   const dRoof  = lRoof  > 0 ? Math.max(0, (1 - eRoof / lRoof))  * 100 : 0;
   const dCeil  = lCeil  > 0 ? Math.max(0, (1 - eCeil / lCeil))  * 100 : 0;
   const dWin   = lWin   > 0 ? Math.max(0, (1 - eWin  / lWin))   * 100 : 0;
@@ -327,7 +327,7 @@ function calc() {{
   document.getElementById('pv-grant-row').classList.toggle('hidden', !grantOn);
   document.getElementById('pv-client-row').classList.toggle('hidden', !grantOn);
   if (grantOn) {{
-    document.getElementById('pv-grant').textContent  = fmt(grantUsed);
+    document.getElementById('pv-grant').textContent  = fmt(grantReceived);
     document.getElementById('pv-client').textContent = fmt(clientPays);
   }}
 
