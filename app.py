@@ -194,6 +194,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label class="opt-wrap"><input type="radio" name="material_roof" value="supafil" onchange="calc()"><span class="opt-btn">SUPAFIL LOFT PRO</span></label>
         <label class="opt-wrap"><input type="radio" name="material_roof" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
       </div>
+      <span class="field-label">Tloušťka izolace (cm)</span>
+      <input type="number" name="thickness_roof" id="thickness_roof" min="1" step="1" placeholder="30">
       <span class="field-label">Plocha střechy (m²)</span>
       <input type="number" name="qty_m2_roof" id="qty_m2_roof" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
       <span class="field-label">Doplňkové práce</span>
@@ -210,6 +212,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label class="opt-wrap"><input type="radio" name="material_ceiling" value="supafil" onchange="calc()"><span class="opt-btn">SUPAFIL LOFT PRO</span></label>
         <label class="opt-wrap"><input type="radio" name="material_ceiling" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
       </div>
+      <span class="field-label">Tloušťka izolace (cm)</span>
+      <input type="number" name="thickness_ceiling" id="thickness_ceiling" min="1" step="1" value="25">
       <span class="field-label">Plocha stropu (m²)</span>
       <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
       <span class="field-label">Kostrukce pochozí plochy (m²)</span>
@@ -228,7 +232,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
-      <div class="preview-row hidden" id="pv-rate-row"><span id="pv-rate-label">Efektivní cena / m²</span><span id="pv-rate">—</span></div>
+      <div class="preview-row hidden" id="pv-rate-roof-row"><span>Efektivní cena / m² — Střecha</span><span id="pv-rate-roof">—</span></div>
+      <div class="preview-row hidden" id="pv-rate-ceil-row"><span>Efektivní cena / m² — Strop</span><span id="pv-rate-ceil">—</span></div>
       <div class="preview-row hidden" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
@@ -320,7 +325,7 @@ function calc() {{
   const fTot = fRoof + fCeil + fWin;
 
   const DOPRAVA = 250;
-  let eRoof = 0, eCeil = 0, eWin = 0, grantReceived = 0, floorHit = false;
+  let eRoof = 0, eCeil = 0, eWin = 0, grantReceived = 0, floorHit = false, roofFloorHit = false, ceilFloorHit = false;
   if (!hasGrant()) {{
     eRoof = hasRoof ? Math.round(roofMinRate(qRoof) * qRoof) : 0;
     eCeil = hasCeil ? Math.round(ceilMinRate(qCeil) * qCeil) : 0;
@@ -332,11 +337,11 @@ function calc() {{
     if (fTot > 0) {{ eRoof = grantReceived * fRoof / fTot; eCeil = grantReceived * fCeil / fTot; eWin = grantReceived * fWin / fTot; }}
     if (hasRoof && qRoof > 0) {{
       const minR = Math.round(roofMinRate(qRoof) * qRoof);
-      if (eRoof < minR) {{ eRoof = minR; floorHit = true; }}
+      if (eRoof < minR) {{ eRoof = minR; floorHit = true; roofFloorHit = true; }}
     }}
     if (hasCeil && qCeil > 0) {{
       const minC = Math.round(ceilMinRate(qCeil) * qCeil);
-      if (eCeil < minC) {{ eCeil = minC; floorHit = true; }}
+      if (eCeil < minC) {{ eCeil = minC; floorHit = true; ceilFloorHit = true; }}
     }}
     const ceilFloor = hasCeil && qCeil > 0 ? Math.round(ceilMinRate(qCeil) * qCeil) : 0;
     eRoof = Math.min(eRoof, lRoof);
@@ -382,18 +387,26 @@ function calc() {{
     document.getElementById('pv-client').textContent = fmt(clientPays + pochoziPrice);
   }}
 
-  const rateEl = document.getElementById('pv-rate-row');
-  const singleInsul = (hasRoof !== hasCeil) && !hasWin;
-  if (singleInsul) {{
-    const qty = hasRoof ? qRoof : qCeil, elig = hasRoof ? eRoof : eCeil;
-    const rate = qty > 0 ? Math.round(elig / qty) : 0;
-    let rateText = new Intl.NumberFormat('cs-CZ').format(rate) + ' K\u010d/m\u00b2';
-    if (floorHit) {{ rateText += ' \u2014 minim\u00e1ln\u00ed cena'; rateEl.style.color = '#c8670a'; rateEl.style.fontWeight = '600'; }}
-    else {{ rateEl.style.color = ''; rateEl.style.fontWeight = ''; }}
-    document.getElementById('pv-rate-label').textContent = 'Efektivn\u00ed cena / m\u00b2';
-    document.getElementById('pv-rate').textContent = rateText;
-    rateEl.classList.remove('hidden');
-  }} else {{ rateEl.classList.add('hidden'); }}
+  if (hasRoof && qRoof > 0) {{
+    const el = document.getElementById('thickness_roof');
+    if (!el.value) el.placeholder = (eRoof / qRoof) < 1500 ? '30' : '35';
+  }}
+
+  function showRate(rowId, valId, qty, elig, hit) {{
+    const el = document.getElementById(rowId);
+    if (qty > 0) {{
+      const rate = Math.round(elig / qty);
+      let txt = new Intl.NumberFormat('cs-CZ').format(rate) + ' K\u010d/m\u00b2';
+      if (hit) {{ txt += ' \u2014 minim\u00e1ln\u00ed cena'; el.style.color = '#c8670a'; el.style.fontWeight = '600'; }}
+      else {{ el.style.color = ''; el.style.fontWeight = ''; }}
+      document.getElementById(valId).textContent = txt;
+      el.classList.remove('hidden');
+    }} else {{
+      el.classList.add('hidden');
+    }}
+  }}
+  showRate('pv-rate-roof-row', 'pv-rate-roof', hasRoof ? qRoof : 0, eRoof, roofFloorHit);
+  showRate('pv-rate-ceil-row', 'pv-rate-ceil', hasCeil ? qCeil : 0, eCeil, ceilFloorHit);
 
   const winOnly  = hasWin && !hasRoof && !hasCeil;
   const splitVal = winOnly ? '80-20' : (getSplit() || '');
@@ -469,6 +482,8 @@ def order_form_post(
     addr_same: str = Form(''),
     adresa_realizace: str = Form(''),
     popis_dila: str = Form(''),
+    thickness_roof: str = Form(''),
+    thickness_ceiling: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -509,16 +524,28 @@ def order_form_post(
 
     COSMETIC_DISC = 3.0  # always show 3% discount; price_unit inflated to compensate
 
+    def line_name_with_thickness(prod_name: str, t: str) -> str:
+        if not t:
+            return prod_name
+        if re.search(r'\d+\s*cm', prod_name):
+            return re.sub(r'\d+\s*cm', f'{t} cm', prod_name)
+        return f'{prod_name} - tloušťka {t} cm'
+
     if has_roof and material_roof:
         ref = REF_MAP[material_roof] + 'A'
         qty = float(qty_m2_roof or 0)
         prods = call('product.product', 'search_read',
-                     [[['default_code', '=', ref]]], {'fields': ['id'], 'limit': 1})
+                     [[['default_code', '=', ref]]], {'fields': ['id', 'name'], 'limit': 1})
         if not prods:
             raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
         unit_price_incl = (eligible_roof / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
+        t_roof = (thickness_roof or '').strip()
+        if not t_roof:
+            rate = eligible_roof / qty if qty else 0
+            t_roof = '30' if rate < 1500 else '35'
         order_lines.append((0, 0, {
             'product_id': prods[0]['id'],
+            'name': line_name_with_thickness(prods[0].get('name', ''), t_roof),
             'product_uom_qty': qty,
             'price_unit': round(unit_price_incl / TAX_RATE, 2),
             'discount': COSMETIC_DISC,
@@ -528,12 +555,14 @@ def order_form_post(
         ref = REF_MAP[material_ceiling] + 'B'
         qty = float(qty_m2_ceiling or 0)
         prods = call('product.product', 'search_read',
-                     [[['default_code', '=', ref]]], {'fields': ['id'], 'limit': 1})
+                     [[['default_code', '=', ref]]], {'fields': ['id', 'name'], 'limit': 1})
         if not prods:
             raise HTTPException(status_code=400, detail=f'Produkt [{ref}] nenalezen v Odoo')
         unit_price_incl = (eligible_ceiling / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
+        t_ceil = (thickness_ceiling or '').strip() or '25'
         order_lines.append((0, 0, {
             'product_id': prods[0]['id'],
+            'name': line_name_with_thickness(prods[0].get('name', ''), t_ceil),
             'product_uom_qty': qty,
             'price_unit': round(unit_price_incl / TAX_RATE, 2),
             'discount': COSMETIC_DISC,
