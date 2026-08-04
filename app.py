@@ -496,10 +496,11 @@ function checkSubmit() {{
   const eTotal = parseFloat(document.getElementById('inp_elig_roof').value    || 0)
                + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
                + parseFloat(document.getElementById('inp_elig_windows').value || 0);
+  const terminDays = document.querySelector('input[name=termin_days]:checked');
   document.getElementById('submitBtn').disabled = !(
     (!hasRoof || (matRoof && qRoof > 0)) &&
     (!hasCeil || (matCeil && qCeil > 0)) &&
-    (!hasWin  || qWin > 0) && split && eTotal > 0
+    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays
   );
 }}
 
