@@ -42,7 +42,7 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
         'x_studio_adresa_realizace', 'x_studio_popis_dila',
         'x_studio_zaloha_kc', 'x_studio_termin_zalohy_1',
-        'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_1',
+        'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
         'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
         'x_studio_cena_po_odecteni_dotace',
@@ -246,11 +246,28 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <div id="split-section" class="hidden">
       <span class="field-label">Záloha / doplatek</span>
       <div class="options" id="split-opts">
-        <label class="opt-wrap"><input type="radio" name="split" value="60-40"><span class="opt-btn">60 / 40</span></label>
-        <label class="opt-wrap"><input type="radio" name="split" value="20-80"><span class="opt-btn">20 / 80</span></label>
-        <label class="opt-wrap"><input type="radio" name="split" value="0-100"><span class="opt-btn">Bez zálohy</span></label>
+        <label class="opt-wrap hidden" id="split-80-20"><input type="radio" name="split" value="80-20" onchange="calc();updateTermin()"><span class="opt-btn">80 / 20</span></label>
+        <label class="opt-wrap"><input type="radio" name="split" value="60-40" onchange="calc();updateTermin()"><span class="opt-btn">60 / 40</span></label>
+        <label class="opt-wrap"><input type="radio" name="split" value="20-80" onchange="calc();updateTermin()"><span class="opt-btn">20 / 80</span></label>
+        <label class="opt-wrap"><input type="radio" name="split" value="0-100" onchange="calc();updateTermin()"><span class="opt-btn">Bez zálohy</span></label>
       </div>
       <div class="split-note" id="split-note"></div>
+    </div>
+
+    <div id="termin-section" class="hidden">
+      <span class="field-label" style="margin-top:20px;">Termín dokončení</span>
+      <div class="options">
+        <label class="opt-wrap"><input type="radio" name="termin_days" value="45" onchange="updateTermin()"><span class="opt-btn">45 dní</span></label>
+        <label class="opt-wrap"><input type="radio" name="termin_days" value="90" onchange="updateTermin()"><span class="opt-btn">90 dní</span></label>
+        <label class="opt-wrap"><input type="radio" name="termin_days" value="150" onchange="updateTermin()"><span class="opt-btn">150 dní</span></label>
+      </div>
+      <div id="termin-cond" class="hidden" style="margin-top:8px;">
+        <div class="options">
+          <label class="opt-wrap"><input type="radio" name="termin_cond" value="podpis" onchange="updateTermin()"><span class="opt-btn">od podpisu smlouvy</span></label>
+          <label class="opt-wrap"><input type="radio" name="termin_cond" value="dotace" onchange="updateTermin()"><span class="opt-btn">od schválení dotace</span></label>
+        </div>
+      </div>
+      <input type="text" name="termin_dokonceni" id="termin_dokonceni" style="margin-top:8px; width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px;" placeholder="Termín bude sestaven po výběru výše">
     </div>
 
     <div style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
@@ -300,11 +317,48 @@ function onTypesChange() {{
   document.getElementById('roof-section').classList.toggle('hidden', !hasRoof);
   document.getElementById('ceiling-section').classList.toggle('hidden', !hasCeil);
   document.getElementById('windows-section').classList.toggle('hidden', !hasWin);
-  document.getElementById('split-section').classList.toggle('hidden', !(hasRoof || hasCeil || hasWin));
+  const anyType = hasRoof || hasCeil || hasWin;
+  document.getElementById('split-section').classList.toggle('hidden', !anyType);
+  document.getElementById('termin-section').classList.toggle('hidden', !anyType);
   const winOnly = hasWin && !hasRoof && !hasCeil;
-  document.querySelectorAll('#split-opts label').forEach(l => l.classList.toggle('hidden', winOnly));
+  document.getElementById('split-80-20').classList.toggle('hidden', !hasWin);
+  document.querySelectorAll('#split-opts label:not(#split-80-20)').forEach(l => l.classList.toggle('hidden', winOnly));
   document.getElementById('split-note').textContent = winOnly ? 'Pro okna je vždy záloha 80 %, doplatek 20 %.' : '';
   calc();
+  updateTermin();
+}}
+
+function getSplitPct() {{
+  const winOnly = document.getElementById('chk_windows').checked &&
+                  !document.getElementById('chk_roof').checked &&
+                  !document.getElementById('chk_ceiling').checked;
+  if (winOnly) return 80;
+  const r = document.querySelector('input[name=split]:checked');
+  if (!r) return null;
+  return parseInt(r.value.split('-')[0], 10);
+}}
+
+function updateTermin() {{
+  const daysEl = document.querySelector('input[name=termin_days]:checked');
+  const days   = daysEl ? daysEl.value : '';
+  const pct    = getSplitPct();
+  const hasZaloha = pct !== null && pct > 0;
+  const condEl = document.getElementById('termin-cond');
+  condEl.classList.toggle('hidden', hasZaloha || !days);
+  let auto = '';
+  if (days) {{
+    if (hasZaloha) {{
+      auto = 'do ' + days + ' dnů od obdržení zálohové platby ve výši ' + pct + ' % z celkové ceny.';
+    }} else {{
+      const condEl2 = document.querySelector('input[name=termin_cond]:checked');
+      if (condEl2) {{
+        const cond = condEl2.value === 'dotace' ? 'schválení dotace' : 'podpisu smlouvy';
+        auto = 'do ' + days + ' dnů od ' + cond + '.';
+      }}
+    }}
+  }}
+  const field = document.getElementById('termin_dokonceni');
+  if (auto) field.value = auto;
 }}
 
 function calc() {{
@@ -484,6 +538,7 @@ def order_form_post(
     popis_dila: str = Form(''),
     thickness_roof: str = Form(''),
     thickness_ceiling: str = Form(''),
+    termin_dokonceni: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -642,6 +697,7 @@ def order_form_post(
         'x_studio_float_field_45q_1jsh2tmcd': insul_area,
         'x_studio_adresa_realizace': addr_value,
         'x_studio_popis_dila': popis_dila or '',
+        'x_studio_termin_dokonceni_2': termin_dokonceni or '',
     }])
 
     # Generate contract PDF immediately after saving
@@ -649,7 +705,7 @@ def order_form_post(
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
         'x_studio_adresa_realizace', 'x_studio_popis_dila',
         'x_studio_zaloha_kc', 'x_studio_termin_zalohy_1',
-        'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_1',
+        'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
         'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
         'x_studio_cena_po_odecteni_dotace',

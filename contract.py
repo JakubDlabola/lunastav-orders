@@ -249,7 +249,7 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{_1_Zalohova_94eb7}':    fmt_czk(order.get('x_studio_zaloha_kc')),
         '{Termin_rea_c5929}':     fmt_date(order.get('x_studio_termin_zalohy_1')),
         '{Doplatek_3d201}':       fmt_czk(order.get('x_studio_doplatek_kc')),
-        '{Platebni_p_0757d}':     fmt_date(order.get('x_studio_termin_dokonceni_1')),
+        '{Platebni_p_0757d}':     order.get('x_studio_termin_dokonceni_2') or '',
         '{Stavebni_p_5c162}':     order.get('x_studio_stavebni_pripravenost', '') or '',
         '{scheduledEnd}':         fmt_date(order.get('x_studio_datum_podpisu_smlouvy')),
         '{Dotace_se__61533}':     dotace_area,
