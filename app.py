@@ -299,7 +299,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
 
-const _STRIKANA_TEXT = 'DODAC\u00cd PODM\u00cdNKY:\\n- Vytopen\u00ed prostoru na teplotu minim\u00e1ln\u011b 17\u00b0C. Uzav\u0159en\u00e9 stavebn\u00ed prostory (zamezen\u00ed pr\u016fvanu).\\n- U ro\u0161tu pro s\u00e1drokarton je pot\u0159eba nav\u00fd\u0161en\u00ed o 3cm (rezerva pro b\u011b\u017enou toleranci tlou\u0161\u0165ky PUR p\u011bny 15%).\\n- Objednatel zakryje m\u00edsta, kter\u00e1 nesm\u00ed b\u00fdt zne\u010di\u0161t\u011bn\u00e1 aplika\u010dn\u00ed chemi\u00ed v\u010detn\u011b stavebn\u00edch otvor\u016f, oken, dve\u0159\u00ed aj.\\n- V p\u0159\u00edpad\u011b venkovn\u00ed aplikace je pot\u0159eba zajistit okol\u00ed cca 100m proti mo\u017en\u00e9mu zne\u010di\u0161t\u011bn\u00ed aplika\u010dn\u00ed chemi\u00ed.\\n- Objednatel zaji\u0161t\u00ed aby kolem kom\u00ednov\u00e9ho t\u011blesa byla neho\u0159av\u00e1 izola\u010dn\u00ed vrstva v minim\u00e1ln\u00ed tlou\u0161\u0165ce 50mm.\\n- Aplika\u010dn\u00ed prostor mus\u00ed b\u00fdt uklizen\u00fd, vyklizen\u00fd, p\u0159ipraven\u00fd pro aplikaci izolace.\\n- Zaji\u0161t\u011bn\u00ed upraven\u00e9ho p\u0159\u00edjezdu pro dod\u00e1vku do 3,5t.\\n- P\u0159ipojen\u00ed k elektrick\u00e9 energii z\u00e1suvkou typu 400V/ 5x32A ji\u0161t\u011bnou ji\u0161ti\u010dem min. 25A bez proudov\u00fdch chr\u00e1ni\u010d\u016f.\\n- P\u0159\u00edsn\u00fd z\u00e1kaz vstupu do prostoru, kde prob\u00edh\u00e1 aplikace izolace.';
+const _STRIKANA_TEXT = 'Stavebn\u00ed prostor bude kv\u016fli zamezen\u00ed pr\u016fvanu uzav\u0159en a vytopen minim\u00e1ln\u011b na teplotu 17\u00b0C. M\u00edsta uvnit\u0159 stavebn\u00edho prostoru, jen\u017e nesm\u00ed b\u00fdt zne\u010di\u0161t\u011bna aplika\u010dn\u00ed chemi\u00ed, budou objednatelem zakryta, v p\u0159\u00edpad\u011b venkovn\u00ed aplikace objednatel proti p\u0159\u00edpadn\u00e9mu zne\u010di\u0161t\u011bn\u00ed zaji\u0161t\u00ed okol\u00ed v dosahu cca 100 m. Objednatel zaji\u0161t\u00ed, aby okolo kom\u00ednov\u00e9ho t\u011blesa byla neho\u0159lav\u00e1 vrstva v minim\u00e1ln\u00ed tlou\u0161\u0165ce 50 mm. S\u00e1drokartonov\u00e9 ro\u0161ty mus\u00ed b\u00fdt s ohledem na rezervu pro b\u011b\u017enou toleranci tlou\u0161\u0165ky PUR p\u011bny nav\u00fd\u0161eny o 3 cm. Objednatel mus\u00ed b\u011bhem pr\u016fb\u011bhu aplikace izolace zamezit vstupu nepovolan\u00fdch do stavebn\u00edch prostor\u016f.';
 const _BASE_STAVEBNI = 'Stavební připravenost spočívá především ve vyklizení místa realizace.';
 
 function updateStavebni() {{
@@ -312,7 +312,7 @@ function updateStavebni() {{
   const matCeil = hasCeil ? document.querySelector('input[name=material_ceiling]:checked')?.value : '';
   const isStrikana = matRoof === 'strikana' || matCeil === 'strikana';
   document.getElementById('stavebni_pripravenost').value =
-    (isStrikana ? _STRIKANA_TEXT + '\\n' : '') + _BASE_STAVEBNI;
+    _BASE_STAVEBNI + (isStrikana ? ' ' + _STRIKANA_TEXT : '');
 }}
 
 const MAT_NAME = {{thermofloc: 'Thermofloc', supafil: 'SUPAFIL LOFT PRO', strikana: 'Stříkaná izolace'}};
