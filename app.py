@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import os
 import random
 import re
@@ -195,9 +195,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label class="opt-wrap"><input type="radio" name="material_roof" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
       </div>
       <span class="field-label">Tloušťka izolace (cm)</span>
-      <input type="number" name="thickness_roof" id="thickness_roof" min="1" step="1" placeholder="30">
+      <input type="number" name="thickness_roof" id="thickness_roof" min="1" step="1" placeholder="30" oninput="updatePopisDila()">
       <span class="field-label">Plocha střechy (m²)</span>
-      <input type="number" name="qty_m2_roof" id="qty_m2_roof" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
+      <input type="number" name="qty_m2_roof" id="qty_m2_roof" value="{zastavena_plocha}" min="1" step="1" oninput="calc(); updatePopisDila()">
       <span class="field-label">Doplňkové práce</span>
       <div class="options">
         <label class="opt-wrap"><input type="checkbox" name="extra_5000a" value="1"><span class="opt-btn">Otevření a zavření falcované střechy</span></label>
@@ -213,13 +213,13 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label class="opt-wrap"><input type="radio" name="material_ceiling" value="strikana" onchange="calc()"><span class="opt-btn">Stříkaná izolace</span></label>
       </div>
       <span class="field-label">Tloušťka izolace (cm)</span>
-      <input type="number" name="thickness_ceiling" id="thickness_ceiling" min="1" step="1" value="25">
+      <input type="number" name="thickness_ceiling" id="thickness_ceiling" min="1" step="1" value="25" oninput="updatePopisDila()">
       <span class="field-label">Plocha stropu (m²)</span>
-      <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" value="{zastavena_plocha}" min="1" step="1" oninput="calc()">
+      <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" value="{zastavena_plocha}" min="1" step="1" oninput="calc(); updatePopisDila()">
       <span class="field-label">Kostrukce pochozí plochy (m²)</span>
-      <input type="number" name="qty_5100" id="qty_5100" min="0" step="1" placeholder="nezahrnout">
+      <input type="number" name="qty_5100" id="qty_5100" min="0" step="1" placeholder="nezahrnout" oninput="calc(); updatePopisDila()">
       <span class="field-label">Konstrukce revizní lávky (m)</span>
-      <input type="number" name="qty_5101" id="qty_5101" min="0" step="1" placeholder="nezahrnout">
+      <input type="number" name="qty_5101" id="qty_5101" min="0" step="1" placeholder="nezahrnout" oninput="calc(); updatePopisDila()">
     </div>
 
     <div id="windows-section" class="hidden type-section">
@@ -282,7 +282,13 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <input type="text" name="adresa_realizace" id="adresa_realizace" placeholder="Ulice, PSČ Město">
       </div>
       <span class="field-label" style="margin-top:20px;">Popis díla</span>
-      <input type="text" name="popis_dila" id="popis_dila" placeholder="">
+      <textarea name="popis_dila" id="popis_dila" rows="5"
+                style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+      <div id="stavebni-section" class="hidden">
+        <span class="field-label" style="margin-top:20px;">Stavební připravenost</span>
+        <textarea name="stavebni_pripravenost" id="stavebni_pripravenost" rows="6"
+                  style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+      </div>
     </div>
 
 
@@ -292,6 +298,74 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 <script>
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
+
+const _STRIKANA_TEXT = 'DODAC\u00cd PODM\u00cdNKY:\n- Vytopen\u00ed prostoru na teplotu minim\u00e1ln\u011b 17\u00b0C. Uzav\u0159en\u00e9 stavebn\u00ed prostory (zamezen\u00ed pr\u016fvanu).\n- U ro\u0161tu pro s\u00e1drokarton je pot\u0159eba nav\u00fd\u0161en\u00ed o 3cm (rezerva pro b\u011b\u017enou toleranci tlou\u0161\u0165ky PUR p\u011bny 15%).\n- Objednatel zakryje m\u00edsta, kter\u00e1 nesm\u00ed b\u00fdt zne\u010di\u0161t\u011bn\u00e1 aplika\u010dn\u00ed chemi\u00ed v\u010detn\u011b stavebn\u00edch otvor\u016f, oken, dve\u0159\u00ed aj.\n- V p\u0159\u00edpad\u011b venkovn\u00ed aplikace je pot\u0159eba zajistit okol\u00ed cca 100m proti mo\u017en\u00e9mu zne\u010di\u0161t\u011bn\u00ed aplika\u010dn\u00ed chemi\u00ed.\n- Objednatel zaji\u0161t\u00ed aby kolem kom\u00ednov\u00e9ho t\u011blesa byla neho\u0159av\u00e1 izola\u010dn\u00ed vrstva v minim\u00e1ln\u00ed tlou\u0161\u0165ce 50mm.\n- Aplika\u010dn\u00ed prostor mus\u00ed b\u00fdt uklizen\u00fd, vyklizen\u00fd, p\u0159ipraven\u00fd pro aplikaci izolace.\n- Zaji\u0161t\u011bn\u00ed upraven\u00e9ho p\u0159\u00edjezdu pro dod\u00e1vku do 3,5t.\n- P\u0159ipojen\u00ed k elektrick\u00e9 energii z\u00e1suvkou typu 400V/ 5x32A ji\u0161t\u011bnou ji\u0161ti\u010dem min. 25A bez proudov\u00fdch chr\u00e1ni\u010d\u016f.\n- P\u0159\u00edsn\u00fd z\u00e1kaz vstupu do prostoru, kde prob\u00edh\u00e1 aplikace izolace.';
+const _BASE_STAVEBNI = 'Stavební připravenost spočívá především ve vyklizení místa realizace.';
+
+function updateStavebni() {{
+  const hasRoof = document.getElementById('chk_roof').checked;
+  const hasCeil = document.getElementById('chk_ceiling').checked;
+  const sec = document.getElementById('stavebni-section');
+  sec.classList.toggle('hidden', !hasRoof && !hasCeil);
+  if (!hasRoof && !hasCeil) return;
+  const matRoof = hasRoof ? document.querySelector('input[name=material_roof]:checked')?.value : '';
+  const matCeil = hasCeil ? document.querySelector('input[name=material_ceiling]:checked')?.value : '';
+  const isStrikana = matRoof === 'strikana' || matCeil === 'strikana';
+  document.getElementById('stavebni_pripravenost').value =
+    (isStrikana ? _STRIKANA_TEXT + '\n' : '') + _BASE_STAVEBNI;
+}}
+
+const MAT_NAME = {{thermofloc: 'Thermofloc', supafil: 'SUPAFIL LOFT PRO', strikana: 'Stříkaná izolace'}};
+
+function updatePopisDila() {{
+  const hasRoof = document.getElementById('chk_roof').checked;
+  const hasCeil = document.getElementById('chk_ceiling').checked;
+  const hasWin  = document.getElementById('chk_windows').checked;
+  if (!hasRoof && !hasCeil && !hasWin) return;
+
+  // Title line
+  const titleParts = [];
+  if (hasRoof && hasCeil) titleParts.push('Zateplení střechy a stropu');
+  else if (hasRoof) titleParts.push('Zateplení střechy');
+  else if (hasCeil) titleParts.push('Zateplení stropu');
+  if (hasWin) titleParts.push('výměna oken');
+  let title = titleParts[0] || '';
+  if (titleParts.length > 1) title += ' a ' + titleParts.slice(1).join(' a ');
+  title = title.charAt(0).toUpperCase() + title.slice(1);
+
+  const lines = [title];
+
+  if (hasRoof) {{
+    const mat  = document.querySelector('input[name=material_roof]:checked')?.value || '';
+    const qty  = document.getElementById('qty_m2_roof').value || '';
+    const tEl  = document.getElementById('thickness_roof');
+    const t    = tEl.value || tEl.placeholder || '30';
+    if (mat && qty) {{
+      lines.push('Na ploše střechy ' + qty + ' m² bude zhotovitelem aplikována tepelná izolace ' + (MAT_NAME[mat] || mat) + ' o minimální tloušťce ' + t + ' cm.');
+    }}
+    const is5000A = document.querySelector('input[name=extra_5000a]')?.checked;
+    const is5000B = document.querySelector('input[name=extra_5000b]')?.checked;
+    if (is5000A || is5000B) {{
+      const krytina = is5000A ? 'falcovaný plech' : 'PVC folie';
+      lines.push('Jedná se o plochou střechu. Střešní krytina je ' + krytina + '. Zhotovitel do dutiny vstoupí otvorem, který ve střešní krytině vytvoří a po realizaci opět zapraví.');
+    }}
+  }}
+
+  if (hasCeil) {{
+    const mat = document.querySelector('input[name=material_ceiling]:checked')?.value || '';
+    const qty = document.getElementById('qty_m2_ceiling').value || '';
+    const t   = document.getElementById('thickness_ceiling').value || '25';
+    if (mat && qty) {{
+      lines.push('Na ploše stropu ' + qty + ' m² bude zhotovitelem aplikována tepelná izolace ' + (MAT_NAME[mat] || mat) + ' o minimální tloušťce ' + t + ' cm.');
+    }}
+    const q5100 = parseFloat(document.getElementById('qty_5100').value) || 0;
+    if (q5100 > 0) lines.push('Na ploše ' + q5100 + ' m² bude nad izolací zhotovena pochozí plocha.');
+    const q5101 = parseFloat(document.getElementById('qty_5101').value) || 0;
+    if (q5101 > 0) lines.push('Zhotovitel postaví revizní lávku o délce ' + q5101 + ' m.');
+  }}
+
+  document.getElementById('popis_dila').value = lines.join('\n');
+}}
 
 function getRemK()  {{ const v = parseFloat(document.getElementById('remaining_grant_k').value); return isNaN(v) ? null : v; }}
 function hasGrant() {{ return document.getElementById('grant_enabled').checked; }}
@@ -326,6 +400,8 @@ function onTypesChange() {{
   document.getElementById('split-note').textContent = winOnly ? 'Pro okna je vždy záloha 80 %, doplatek 20 %.' : '';
   calc();
   updateTermin();
+  updateStavebni();
+  updatePopisDila();
 }}
 
 function getSplitPct() {{
@@ -504,7 +580,7 @@ function checkSubmit() {{
   );
 }}
 
-document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); }});
+document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
 </script>
 </body>
 </html>"""
@@ -540,6 +616,7 @@ def order_form_post(
     thickness_roof: str = Form(''),
     thickness_ceiling: str = Form(''),
     termin_dokonceni: str = Form(''),
+    stavebni_pripravenost: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -699,6 +776,7 @@ def order_form_post(
         'x_studio_adresa_realizace': addr_value,
         'x_studio_popis_dila': popis_dila or '',
         'x_studio_termin_dokonceni_2': termin_dokonceni or '',
+        'x_studio_stavebni_pripravenost': stavebni_pripravenost or '',
     }])
 
     # Generate contract PDF immediately after saving

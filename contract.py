@@ -47,15 +47,19 @@ def _make_bold(run):
 
 
 def _build_run_text(r, text):
-    """Append text (with embedded \\t for tabs) into run r."""
-    segments = text.split('\t')
-    for i, seg in enumerate(segments):
-        if seg:
-            t = etree.SubElement(r, qn('w:t'))
-            t.text = seg
-            t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-        if i < len(segments) - 1:
-            etree.SubElement(r, qn('w:tab'))
+    """Append text (with \\t for tabs and \\n for line breaks) into run r."""
+    lines = text.split('\n')
+    for li, line in enumerate(lines):
+        if li > 0:
+            etree.SubElement(r, qn('w:br'))
+        segments = line.split('\t')
+        for i, seg in enumerate(segments):
+            if seg:
+                t = etree.SubElement(r, qn('w:t'))
+                t.text = seg
+                t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+            if i < len(segments) - 1:
+                etree.SubElement(r, qn('w:tab'))
 
 
 def replace_in_element(element, replacements, bold_keys=None):
@@ -250,7 +254,7 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{Termin_rea_c5929}':     fmt_date(order.get('x_studio_termin_zalohy_1')),
         '{Doplatek_3d201}':       fmt_czk(order.get('x_studio_doplatek_kc')),
         '{Platebni_p_0757d}':     order.get('x_studio_termin_dokonceni_2') or '',
-        '{Stavebni_p_5c162}':     order.get('x_studio_stavebni_pripravenost', '') or '',
+        '{Stavebni_p_5c162}':     _BOLD_ON + (order.get('x_studio_stavebni_pripravenost', '') or '') + _BOLD_OFF,
         '{scheduledEnd}':         fmt_date(order.get('x_studio_datum_podpisu_smlouvy')),
         '{Dotace_se__61533}':     dotace_area,
         '{Vyse_dotac_6d201}':     fmt_czk(order.get('x_studio_vyse_dotace_kc')) + '\xa0',
