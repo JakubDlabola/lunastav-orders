@@ -341,7 +341,7 @@ function updatePopisDila() {{
     const tEl  = document.getElementById('thickness_roof');
     const t    = tEl.value || tEl.placeholder || '30';
     if (mat && qty) {{
-      lines.push('Na ploše střechy ' + qty + ' m² bude zhotovitelem aplikována tepelná izolace ' + (MAT_NAME[mat] || mat) + ' o minimální tloušťce ' + t + ' cm.');
+      lines.push('Na ploše střechy o výměře ' + qty + ' m² bude zhotovitelem aplikována tepelná izolace ' + (MAT_NAME[mat] || mat) + ' o minimální tloušťce ' + t + ' cm.');
     }}
     const is5000A = document.querySelector('input[name=extra_5000a]')?.checked;
     const is5000B = document.querySelector('input[name=extra_5000b]')?.checked;
@@ -356,7 +356,7 @@ function updatePopisDila() {{
     const qty = document.getElementById('qty_m2_ceiling').value || '';
     const t   = document.getElementById('thickness_ceiling').value || '25';
     if (mat && qty) {{
-      lines.push('Na ploše stropu ' + qty + ' m² bude zhotovitelem aplikována tepelná izolace ' + (MAT_NAME[mat] || mat) + ' o minimální tloušťce ' + t + ' cm.');
+      lines.push('Na ploše stropu o výměře ' + qty + ' m² bude zhotovitelem aplikována tepelná izolace ' + (MAT_NAME[mat] || mat) + ' o minimální tloušťce ' + t + ' cm.');
     }}
     const q5100 = parseFloat(document.getElementById('qty_5100').value) || 0;
     if (q5100 > 0) lines.push('Na ploše ' + q5100 + ' m² bude nad izolací zhotovena pochozí plocha.');
@@ -364,7 +364,8 @@ function updatePopisDila() {{
     if (q5101 > 0) lines.push('Zhotovitel postaví revizní lávku o délce ' + q5101 + ' m.');
   }}
 
-  document.getElementById('popis_dila').value = lines.join('\\n');
+  const body = lines.slice(1).join(' ');
+  document.getElementById('popis_dila').value = lines[0] + (body ? '\\n' + body : '');
 }}
 
 function getRemK()  {{ const v = parseFloat(document.getElementById('remaining_grant_k').value); return isNaN(v) ? null : v; }}
