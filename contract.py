@@ -234,8 +234,8 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{companyCity}':          partner.get('city', '') or '',
         '{companyEmail}':         partner.get('email', '') or '',
         '{companyTel1}':          partner.get('phone', '') or '',
-        '{name}':                 '',
-        '{Popis_dila_512bd}':     _BOLD_ON + (order.get('x_studio_popis_dila', '') or '') + _BOLD_OFF,
+        '{name}':                 _BOLD_ON + (order.get('x_studio_popis_dila', '') or '') + _BOLD_OFF,
+        '{Popis_dila_512bd}':     '',
         '{Adresa_rea_db304}':     _BOLD_ON + (
             order.get('x_studio_adresa_realizace') or ' '.join(
                 p for p in [

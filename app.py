@@ -3,6 +3,7 @@ import os
 import random
 import re
 import xmlrpc.client
+from datetime import date
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query
@@ -364,8 +365,7 @@ function updatePopisDila() {{
     if (q5101 > 0) lines.push('Zhotovitel postaví revizní lávku o délce ' + q5101 + ' m.');
   }}
 
-  const body = lines.slice(1).join(' ');
-  document.getElementById('popis_dila').value = lines[0] + (body ? '\\n' + body : '');
+  document.getElementById('popis_dila').value = lines.join(' ');
 }}
 
 function getRemK()  {{ const v = parseFloat(document.getElementById('remaining_grant_k').value); return isNaN(v) ? null : v; }}
@@ -778,6 +778,7 @@ def order_form_post(
         'x_studio_popis_dila': popis_dila or '',
         'x_studio_termin_dokonceni_2': termin_dokonceni or '',
         'x_studio_stavebni_pripravenost': stavebni_pripravenost or '',
+        'x_studio_datum_podpisu_smlouvy': date.today().isoformat(),
     }])
 
     # Generate contract PDF immediately after saving
