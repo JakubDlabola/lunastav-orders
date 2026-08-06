@@ -365,7 +365,8 @@ function updatePopisDila() {{
     if (q5101 > 0) lines.push('Zhotovitel postaví revizní lávku o délce ' + q5101 + ' m.');
   }}
 
-  document.getElementById('popis_dila').value = lines.join(' ');
+  const body = lines.slice(1).join(' ');
+  document.getElementById('popis_dila').value = lines[0] + (body ? '\\n' + body : '');
 }}
 
 function getRemK()  {{ const v = parseFloat(document.getElementById('remaining_grant_k').value); return isNaN(v) ? null : v; }}
