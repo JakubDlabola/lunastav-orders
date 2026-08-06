@@ -181,8 +181,8 @@ def fill_items_table(doc, items):
             '{/hasItems}': '',
             '{BusinessCaseItemCode}': item.get('code', ''),
             '{BusinessCaseItemName}': item.get('name', ''),
-            '{BusinessCaseItemCount}': str(item.get('qty', '')),
-            '{BusinessCaseItemUnit}': item.get('unit', ''),
+            '{BusinessCaseItemCount}': '' if item.get('code', '') in ('D', '5000A', '5000B') else str(item.get('qty', '')),
+            '{BusinessCaseItemUnit}': '' if item.get('code', '') in ('D', '5000A', '5000B') else item.get('unit', ''),
         })
         parent.insert(insert_idx + i, new_tr)
 
