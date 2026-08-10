@@ -91,7 +91,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     #    - T&C last page: same columns, near bottom
     sign_locations = []
     if contract_sig_page and contract_sig_page != last_page:
-        sign_locations.append((contract_sig_page, 0.65))  # main contract sig table
+        sign_locations.append((contract_sig_page, 0.47))  # main contract sig table
     sign_locations.append((last_page, 0.72))              # T&C page sig table
 
     for page_num, posY in sign_locations:
