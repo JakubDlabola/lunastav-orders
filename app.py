@@ -34,22 +34,40 @@ def _get_or_create_role(call_fn, name):
     return ids[0] if ids else call_fn('sign.item.role', 'create', [{'name': name}])
 
 
-def _find_contract_sig_page(pdf_bytes):
-    """Return the 1-based page number of the main contract signature table.
+def _find_contract_sig_page_and_posY(pdf_bytes):
+    """Return (page_num_1based, posY) for the main contract signature table.
 
-    The main signature page contains the appendix listing ('Přílohy') and
-    the company signer name ('Najman'). Falls back to None if not detected.
+    Detects the page containing the appendix listing + company signer name,
+    then finds the Y coordinate of the 'Objednatel' footer label (bottom of the
+    signing box) and places the frame above it.  Falls back to (None, 0.47).
     """
     try:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(pdf_bytes))
         for i, page in enumerate(reader.pages):
             text = page.extract_text() or ''
-            if ('ílohy' in text or 'Prilohy' in text) and 'Najman' in text:
-                return i + 1
+            if ('ílohy' not in text and 'Prilohy' not in text) or 'Najman' not in text:
+                continue
+            # Found the page — now locate 'Objednatel' label via visitor
+            page_height = float(page.mediabox.height)
+            objednatel_ys = []
+            def visitor(text_chunk, cm, tm, fontDict, fontSize):
+                if text_chunk and 'Objednatel' in text_chunk:
+                    objednatel_ys.append(tm[5])  # Y from bottom in PDF points
+            page.extract_text(visitor_text=visitor)
+            if objednatel_ys:
+                # Lowest Y on the page = the signature table footer label
+                label_y_pdf = min(objednatel_ys)
+                # Convert to Odoo posY (fraction from top, 0=top 1=bottom)
+                label_posY = 1.0 - (label_y_pdf / page_height)
+                # Signature box sits above the label; place frame ~9% above the label
+                posY = round(max(0.05, label_posY - 0.09), 3)
+            else:
+                posY = 0.47
+            return (i + 1, posY)
     except Exception:
         pass
-    return None
+    return (None, 0.47)
 
 
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email):
@@ -64,8 +82,8 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
     last_page = num_pages
 
-    # Detect main contract signature page (has appendix listing + company name)
-    contract_sig_page = _find_contract_sig_page(pdf_bytes)
+    # Detect main contract signature page and its Y position dynamically
+    contract_sig_page, contract_sig_posY = _find_contract_sig_page_and_posY(pdf_bytes)
 
     # 1. Upload PDF as an attachment
     att_id = call_fn('ir.attachment', 'create', [{
@@ -91,8 +109,8 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     #    - T&C last page: same columns, near bottom
     sign_locations = []
     if contract_sig_page and contract_sig_page != last_page:
-        sign_locations.append((contract_sig_page, 0.47))  # main contract sig table
-    sign_locations.append((last_page, 0.72))              # T&C page sig table
+        sign_locations.append((contract_sig_page, contract_sig_posY))
+    sign_locations.append((last_page, 0.72))              # T&C page — fixed layout
 
     for page_num, posY in sign_locations:
         for role_id, posX in [(client_role_id, 0.10), (company_role_id, 0.55)]:
