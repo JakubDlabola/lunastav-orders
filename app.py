@@ -1,5 +1,6 @@
 ﻿import base64
 import io
+import logging
 import os
 import random
 import re
@@ -61,9 +62,14 @@ def _find_contract_sig_page_and_posY(pdf_bytes):
                 anchor_y_pdf = anchor_ys[0]
                 # Convert to Odoo posY (0=top, 1=bottom); centre frame on anchor
                 anchor_posY = 1.0 - (anchor_y_pdf / page_height)
-                posY = round(max(0.05, anchor_posY - 0.10), 3)
+                posY = round(max(0.05, anchor_posY - 0.04), 3)
+                logging.warning(
+                    f'SIGN_ANCHOR found: page={i+1} anchor_y_pdf={anchor_y_pdf:.1f} '
+                    f'page_h={page_height:.1f} anchor_posY={anchor_posY:.4f} → posY={posY}'
+                )
             else:
                 posY = 0.47
+                logging.warning(f'SIGN_ANCHOR not found on page {i+1}, using fallback posY=0.47')
             return (i + 1, posY)
     except Exception:
         pass
