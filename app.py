@@ -122,7 +122,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     sign_locations.append((last_page, tc_sig_posY))
 
     for page_num, posY in sign_locations:
-        for role_id, posX in [(client_role_id, 0.10), (company_role_id, 0.55)]:
+        for role_id, posX in [(client_role_id, 0.13), (company_role_id, 0.55)]:
             call('sign.item', 'create', [{
                 'template_id': template_id,
                 'document_id': doc_id,
