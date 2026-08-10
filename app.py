@@ -35,44 +35,33 @@ def _get_or_create_role(call_fn, name):
     return ids[0] if ids else call_fn('sign.item.role', 'create', [{'name': name}])
 
 
-_SIGN_ANCHOR = '◆'  # ◆ placed invisibly at centre of the signing box in the DOCX
+_SIGN_ANCHOR = '◆'  # placed invisibly at centre of each signing box in the DOCX
 
 
-def _find_contract_sig_page_and_posY(pdf_bytes):
-    """Return (page_num_1based, posY) for the main contract signature table.
+def _anchor_posY_on_page(page, label, fallback):
+    """Find the ◆ anchor on a pypdf page and return Odoo posY (0=top, 1=bottom)."""
+    page_height = float(page.mediabox.height)
+    anchor_ys = []
+    def visitor(text_chunk, cm, tm, fontDict, fontSize):
+        if text_chunk and _SIGN_ANCHOR in text_chunk:
+            anchor_ys.append(tm[5])  # Y from bottom in PDF points
+    page.extract_text(visitor_text=visitor)
+    if anchor_ys:
+        anchor_posY = 1.0 - (anchor_ys[0] / page_height)
+        posY = round(max(0.05, anchor_posY - 0.03), 3)  # 0.03 = half frame height
+        logging.warning(f'SIGN_ANCHOR {label}: anchor_posY={anchor_posY:.4f} → posY={posY}')
+        return posY
+    logging.warning(f'SIGN_ANCHOR {label}: not found, using fallback={fallback}')
+    return fallback
 
-    Detects the page containing the appendix listing + company signer name,
-    then finds the ◆ anchor character placed at the vertical centre of the
-    signing box.  Falls back to (None, 0.47).
-    """
-    try:
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        for i, page in enumerate(reader.pages):
-            text = page.extract_text() or ''
-            if ('ílohy' not in text and 'Prilohy' not in text) or 'Najman' not in text:
-                continue
-            page_height = float(page.mediabox.height)
-            anchor_ys = []
-            def visitor(text_chunk, cm, tm, fontDict, fontSize):
-                if text_chunk and _SIGN_ANCHOR in text_chunk:
-                    anchor_ys.append(tm[5])  # Y from bottom in PDF points
-            page.extract_text(visitor_text=visitor)
-            if anchor_ys:
-                anchor_y_pdf = anchor_ys[0]
-                # Convert to Odoo posY (0=top, 1=bottom); centre frame on anchor
-                anchor_posY = 1.0 - (anchor_y_pdf / page_height)
-                posY = round(max(0.05, anchor_posY - 0.04), 3)
-                logging.warning(
-                    f'SIGN_ANCHOR found: page={i+1} anchor_y_pdf={anchor_y_pdf:.1f} '
-                    f'page_h={page_height:.1f} anchor_posY={anchor_posY:.4f} → posY={posY}'
-                )
-            else:
-                posY = 0.47
-                logging.warning(f'SIGN_ANCHOR not found on page {i+1}, using fallback posY=0.47')
-            return (i + 1, posY)
-    except Exception:
-        pass
+
+def _find_contract_sig_page_and_posY(reader):
+    """Return (page_num_1based, posY) for the main contract signature table."""
+    for i, page in enumerate(reader.pages):
+        text = page.extract_text() or ''
+        if ('ílohy' not in text and 'Prilohy' not in text) or 'Najman' not in text:
+            continue
+        return (i + 1, _anchor_posY_on_page(page, f'contract p={i+1}', 0.47))
     return (None, 0.47)
 
 
@@ -90,13 +79,20 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
 
     try:
         from pypdf import PdfReader
-        num_pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        _reader = PdfReader(io.BytesIO(pdf_bytes))
+        num_pages = len(_reader.pages)
     except Exception:
+        _reader = None
         num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
     last_page = num_pages
 
-    # Detect main contract signature page and its Y position dynamically
-    contract_sig_page, contract_sig_posY = _find_contract_sig_page_and_posY(pdf_bytes)
+    if _reader:
+        contract_sig_page, contract_sig_posY = _find_contract_sig_page_and_posY(_reader)
+        tc_sig_posY = _anchor_posY_on_page(
+            _reader.pages[last_page - 1], f'T&C p={last_page}', 0.73)
+    else:
+        contract_sig_page, contract_sig_posY = None, 0.47
+        tc_sig_posY = 0.73
 
     # 1. Upload PDF as an attachment
     att_id = call('ir.attachment', 'create', [{
@@ -123,7 +119,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     sign_locations = []
     if contract_sig_page and contract_sig_page != last_page:
         sign_locations.append((contract_sig_page, contract_sig_posY))
-    sign_locations.append((last_page, 0.73))              # T&C page — fixed layout
+    sign_locations.append((last_page, tc_sig_posY))
 
     for page_num, posY in sign_locations:
         for role_id, posX in [(client_role_id, 0.10), (company_role_id, 0.55)]:
