@@ -48,7 +48,7 @@ def _anchor_posY_on_page(page, label, fallback):
     page.extract_text(visitor_text=visitor)
     if anchor_ys:
         anchor_posY = 1.0 - (anchor_ys[0] / page_height)
-        posY = round(max(0.05, anchor_posY - 0.02), 3)
+        posY = round(max(0.05, anchor_posY - 0.025), 3)
         logging.warning(f'SIGN_ANCHOR {label}: anchor_posY={anchor_posY:.4f} → posY={posY}')
         return posY
     logging.warning(f'SIGN_ANCHOR {label}: not found, using fallback={fallback}')
@@ -335,6 +335,18 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
         <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
       </div>
+      <div style="margin-top:6px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="addr_same" name="addr_same" value="1" checked
+                 onchange="document.getElementById('addr-custom').classList.toggle('hidden',this.checked)"
+                 style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+          <label for="addr_same" style="font-size:14px;cursor:pointer;">Adresa realizace se shoduje s adresou trvalého bydliště</label>
+        </div>
+        <div id="addr-custom" class="hidden" style="margin-top:8px;">
+          <span class="field-label">Adresa realizace</span>
+          <input type="text" name="adresa_realizace" id="adresa_realizace" placeholder="Ulice, PSČ Město">
+        </div>
+      </div>
     </div>
 
     <span class="field-label">Typ práce</span>
@@ -428,17 +440,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     </div>
 
     <div style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <input type="checkbox" id="addr_same" name="addr_same" value="1" checked
-               onchange="document.getElementById('addr-custom').classList.toggle('hidden',this.checked)"
-               style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
-        <label for="addr_same" style="font-size:14px;cursor:pointer;">Adresa realizace se shoduje s adresou trvalého bydliště</label>
-      </div>
-      <div id="addr-custom" class="hidden">
-        <span class="field-label">Adresa realizace</span>
-        <input type="text" name="adresa_realizace" id="adresa_realizace" placeholder="Ulice, PSČ Město">
-      </div>
-      <span class="field-label" style="margin-top:20px;">Popis díla</span>
+      <span class="field-label">Popis díla</span>
       <textarea name="popis_dila" id="popis_dila" rows="5"
                 style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
       <div id="stavebni-section" class="hidden">
