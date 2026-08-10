@@ -61,7 +61,7 @@ def _find_contract_sig_page_and_posY(pdf_bytes):
                 anchor_y_pdf = anchor_ys[0]
                 # Convert to Odoo posY (0=top, 1=bottom); centre frame on anchor
                 anchor_posY = 1.0 - (anchor_y_pdf / page_height)
-                posY = round(max(0.05, anchor_posY - 0.03), 3)  # 0.03 = half frame height
+                posY = round(max(0.05, anchor_posY - 0.10), 3)
             else:
                 posY = 0.47
             return (i + 1, posY)
@@ -75,6 +75,10 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
     company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
     company_email      = company_email      or _SIGN_COMPANY_EMAIL
+
+    # Force Czech language so Odoo generates the completion certificate in Czech
+    def call(model, method, args, kw=None):
+        return call_fn(model, method, args, {'context': {'lang': 'cs_CZ'}, **(kw or {})})
     client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
     company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
 
@@ -89,7 +93,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     contract_sig_page, contract_sig_posY = _find_contract_sig_page_and_posY(pdf_bytes)
 
     # 1. Upload PDF as an attachment
-    att_id = call_fn('ir.attachment', 'create', [{
+    att_id = call('ir.attachment', 'create', [{
         'name': f'{order_name}.pdf',
         'type': 'binary',
         'datas': base64.b64encode(pdf_bytes).decode(),
@@ -97,10 +101,10 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     }])
 
     # 2. Create the sign template (empty — items are tied to the document)
-    template_id = call_fn('sign.template', 'create', [{'name': order_name}])
+    template_id = call('sign.template', 'create', [{'name': order_name}])
 
     # 3. Create sign.document linking the attachment to the template
-    doc_id = call_fn('sign.document', 'create', [{
+    doc_id = call('sign.document', 'create', [{
         'template_id': template_id,
         'attachment_id': att_id,
         'name': f'{order_name}.pdf',
@@ -113,11 +117,11 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     sign_locations = []
     if contract_sig_page and contract_sig_page != last_page:
         sign_locations.append((contract_sig_page, contract_sig_posY))
-    sign_locations.append((last_page, 0.78))              # T&C page — fixed layout
+    sign_locations.append((last_page, 0.73))              # T&C page — fixed layout
 
     for page_num, posY in sign_locations:
         for role_id, posX in [(client_role_id, 0.10), (company_role_id, 0.55)]:
-            call_fn('sign.item', 'create', [{
+            call('sign.item', 'create', [{
                 'template_id': template_id,
                 'document_id': doc_id,
                 'type_id': _SIGN_SIG_TYPE_ID,
@@ -127,7 +131,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
             }])
 
     # 5. Create the signing request
-    request_id = call_fn('sign.request', 'create', [{
+    request_id = call('sign.request', 'create', [{
         'template_id': template_id,
         'reference': order_name,
         'send_channel': 'email',
@@ -139,7 +143,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
 
     # 6. Send — method returns None which XML-RPC cannot serialize; that's expected
     try:
-        call_fn('sign.request', 'send_signature_accesses', [[request_id]])
+        call('sign.request', 'send_signature_accesses', [[request_id]])
     except Exception as e:
         if 'cannot marshal None' not in str(e):
             raise
