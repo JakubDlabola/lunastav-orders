@@ -11,9 +11,15 @@ from lxml import etree
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
 
-# Inline bold markers — control chars never present in normal text
-_BOLD_ON  = '\x01B\x01'
-_BOLD_OFF = '\x01/B\x01'
+# Inline bold/highlight markers — control chars never present in normal text
+_BOLD_ON       = '\x01B\x01'
+_BOLD_OFF      = '\x01/B\x01'
+_HIGHLIGHT_ON  = '\x01H\x01'
+_HIGHLIGHT_OFF = '\x01/H\x01'
+_MARKER_RE = re.compile(
+    f'({re.escape(_BOLD_ON)}|{re.escape(_BOLD_OFF)}'
+    f'|{re.escape(_HIGHLIGHT_ON)}|{re.escape(_HIGHLIGHT_OFF)})'
+)
 
 
 def fmt_czk(value):
@@ -44,6 +50,16 @@ def _make_bold(run):
         run.insert(0, rPr)
     if rPr.find(qn('w:b')) is None:
         etree.SubElement(rPr, qn('w:b'))
+
+
+def _make_highlight(run, color='yellow'):
+    rPr = run.find(qn('w:rPr'))
+    if rPr is None:
+        rPr = etree.Element(qn('w:rPr'))
+        run.insert(0, rPr)
+    if rPr.find(qn('w:highlight')) is None:
+        h = etree.SubElement(rPr, qn('w:highlight'))
+        h.set(qn('w:val'), color)
 
 
 def _build_run_text(r, text):
@@ -93,19 +109,23 @@ def replace_in_element(element, replacements, bold_keys=None):
                 if child.tag in (qn('w:t'), qn('w:tab')):
                     r.remove(child)
 
-        if _BOLD_ON in new_text:
-            # Split on bold markers and emit one run per segment with correct bold state
-            parts = re.split(f'({re.escape(_BOLD_ON)}|{re.escape(_BOLD_OFF)})', new_text)
+        if _BOLD_ON in new_text or _HIGHLIGHT_ON in new_text:
+            parts = _MARKER_RE.split(new_text)
             parent = first_r.getparent()
             idx = list(parent).index(first_r)
             parent.remove(first_r)
             current_bold = should_bold
+            current_highlight = False
             offset = 0
             for part in parts:
                 if part == _BOLD_ON:
                     current_bold = True
                 elif part == _BOLD_OFF:
                     current_bold = should_bold
+                elif part == _HIGHLIGHT_ON:
+                    current_highlight = True
+                elif part == _HIGHLIGHT_OFF:
+                    current_highlight = False
                 elif part:
                     r = copy.deepcopy(first_r)
                     for child in list(r):
@@ -113,6 +133,8 @@ def replace_in_element(element, replacements, bold_keys=None):
                             r.remove(child)
                     if current_bold:
                         _make_bold(r)
+                    if current_highlight:
+                        _make_highlight(r)
                     _build_run_text(r, part)
                     parent.insert(idx + offset, r)
                     offset += 1
@@ -250,9 +272,10 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{priceWithoutDiscount}': fmt_czk(total_real_listed_excl),
         '{discountPercent}':      str(discount_pct),
         '{discount}':             fmt_czk(real_discount_excl),
-        '{_1_Zalohova_94eb7}':    fmt_czk(order.get('x_studio_zaloha_kc')),
-        '{Termin_rea_c5929}':     fmt_date(order.get('x_studio_termin_zalohy_1')),
-        '{Doplatek_3d201}':       fmt_czk(order.get('x_studio_doplatek_kc')),
+        '{_1_Zalohova_94eb7}':    _BOLD_ON + fmt_czk(order.get('x_studio_zaloha_kc')) + _BOLD_OFF,
+        '{Termin_rea_c5929}':     _BOLD_ON + fmt_date(order.get('x_studio_termin_zalohy_1')) + _BOLD_OFF,
+        '{Doplatek_3d201}':       _BOLD_ON + fmt_czk(order.get('x_studio_doplatek_kc')) + _BOLD_OFF,
+        '255286223/0600':         _BOLD_ON + '255286223/0600' + _BOLD_OFF,
         '{Platebni_p_0757d}':     order.get('x_studio_termin_dokonceni_2') or '',
         '{Stavebni_p_5c162}':     _BOLD_ON + (order.get('x_studio_stavebni_pripravenost', '') or '') + _BOLD_OFF,
         '{scheduledEnd}':         fmt_date(order.get('x_studio_datum_podpisu_smlouvy')),
@@ -281,7 +304,6 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     bold_keys = {
         '{totalAmountWithTax}', '{totalAmount}', '{taxAmount}',
         '{priceWithoutDiscount}', '{discount}',
-        '{_1_Zalohova_94eb7}', '{Doplatek_3d201}',
         '{Vyse_dotac_6d201}', '{Konecna_ce_0d59a}',
     }
     fill_items_table(doc, real_lines)
