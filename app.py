@@ -24,6 +24,7 @@ app = FastAPI(title='LUNASTAV Order Service')
 _SIGN_SIG_TYPE_ID        = 1                          # Signature field type id
 _SIGN_COMPANY_PARTNER_ID = 3                          # Lukáš Najman (LUNASTAV signer)
 _SIGN_COMPANY_EMAIL      = 'lukas.najman@lunastav.cz'
+_SIGN_TEST_EMAIL         = 'najm.tomas@gmail.com'    # TEST ONLY — remove before go-live
 
 
 def _get_or_create_role(call_fn, name):
@@ -179,6 +180,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     partner_name = order['partner_id'][1] if order['partner_id'] else 'Neznámý zákazník'
 
+    _p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': ['email', 'phone', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
+    partner_email = _p.get('email') or ''
+    partner_phone = _p.get('phone') or ''
+    partner_dob   = _p.get('x_studio_datum_narozeni') or ''
+
     zastavena_plocha = ''
     remaining_grant_k = '250000'
     if order.get('opportunity_id'):
@@ -221,7 +227,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     button[type=submit]:disabled {{ background: #ccc; cursor: default; }}
     .hidden {{ display: none !important; }}
     .grant-info {{ font-size: 13px; color: #555; margin-top: 4px; }}
-    input[type=text] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
+    input[type=text], input[type=email], input[type=tel], input[type=date] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
   </style>
 </head>
 <body>
@@ -239,6 +245,22 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <input type="hidden" name="discount_pct_ceiling" id="inp_disc_ceiling" value="0">
     <input type="hidden" name="discount_pct_windows" id="inp_disc_windows" value="0">
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
+
+    <span class="field-label">Kontakt</span>
+    <div style="display:grid;gap:8px;margin-bottom:20px;">
+      <div>
+        <label style="font-size:12px;color:#888;">E-mail</label>
+        <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#888;">Telefon</label>
+        <input type="tel" name="client_phone" value="{partner_phone}" placeholder="Telefon klienta">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#888;">Datum narození</label>
+        <input type="date" name="client_dob" value="{partner_dob}">
+      </div>
+    </div>
 
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
       <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
@@ -683,6 +705,9 @@ def order_form_post(
     thickness_ceiling: str = Form(''),
     termin_dokonceni: str = Form(''),
     stavebni_pripravenost: str = Form(''),
+    client_email: str = Form(''),
+    client_phone: str = Form(''),
+    client_dob: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -856,9 +881,20 @@ def order_form_post(
         'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
         'x_studio_cena_po_odecteni_dotace',
     ]})[0]
-    partner = call('res.partner', 'read', [[updated['partner_id'][0]]], {'fields': [
-        'name', 'street', 'zip', 'city', 'email', 'phone',
+    partner_id_val = updated['partner_id'][0]
+    partner = call('res.partner', 'read', [[partner_id_val]], {'fields': [
+        'name', 'street', 'zip', 'city', 'email', 'phone', 'x_studio_datum_narozeni',
     ]})[0]
+    patch = {}
+    if not partner.get('email') and client_email:
+        patch['email'] = client_email
+    if not partner.get('phone') and client_phone:
+        patch['phone'] = client_phone
+    if not partner.get('x_studio_datum_narozeni') and client_dob:
+        patch['x_studio_datum_narozeni'] = client_dob
+    if patch:
+        call('res.partner', 'write', [[partner_id_val], patch])
+        partner.update(patch)
     lines = call('sale.order.line', 'read', [updated['order_line']], {'fields': [
         'product_id', 'name', 'product_uom_qty', 'product_uom_id',
         'price_unit', 'price_subtotal', 'discount', 'display_type', 'is_downpayment',
@@ -880,7 +916,7 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 updated['partner_id'][0], client_email)
+                                 updated['partner_id'][0], _SIGN_TEST_EMAIL)
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
             sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {exc}</p>'

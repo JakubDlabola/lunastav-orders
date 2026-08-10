@@ -250,7 +250,7 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     replacements = {
         '{code}':                 order.get('name', ''),
         '{companyName}':          partner.get('name', ''),
-        '{companyBirthday}':      '',
+        '{companyBirthday}':      fmt_date(partner.get('x_studio_datum_narozeni') or ''),
         '{companyStreet}':        partner.get('street', '') or '',
         '{companyZipCode}':       partner.get('zip', '') or '',
         '{companyCity}':          partner.get('city', '') or '',
