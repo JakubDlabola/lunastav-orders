@@ -122,7 +122,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     sign_locations.append((last_page, tc_sig_posY))
 
     for page_num, posY in sign_locations:
-        for role_id, posX in [(client_role_id, 0.13), (company_role_id, 0.55)]:
+        for role_id, posX in [(client_role_id, 0.15), (company_role_id, 0.55)]:
             call('sign.item', 'create', [{
                 'template_id': template_id,
                 'document_id': doc_id,
@@ -143,12 +143,6 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         ],
     }])
 
-    # 6. Send — method returns None which XML-RPC cannot serialize; that's expected
-    try:
-        call('sign.request', 'send_signature_accesses', [[request_id]])
-    except Exception as e:
-        if 'cannot marshal None' not in str(e):
-            raise
     return request_id
 
 
@@ -331,11 +325,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         <label style="font-size:12px;color:#888;">Datum narození</label>
         <input type="text" name="client_dob" value="{partner_dob}" placeholder="DD.MM.RRRR">
       </div>
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;margin-top:4px;">
-        <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
-        <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
-      </div>
-      <div style="margin-top:6px;">
+      <div style="margin-top:4px;">
         <div style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" id="addr_same" name="addr_same" value="1" checked
                  onchange="document.getElementById('addr-custom').classList.toggle('hidden',this.checked)"
@@ -346,6 +336,10 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
           <span class="field-label">Adresa realizace</span>
           <input type="text" name="adresa_realizace" id="adresa_realizace" placeholder="Ulice, PSČ Město">
         </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;margin-top:6px;">
+        <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
+        <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
       </div>
     </div>
 
