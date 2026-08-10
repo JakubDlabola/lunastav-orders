@@ -21,6 +21,70 @@ SERVICE_KEY  = os.environ['SERVICE_KEY']
 
 app = FastAPI(title='LUNASTAV Order Service')
 
+_SIGN_SIG_TYPE_ID        = 1                          # Signature field type id
+_SIGN_COMPANY_PARTNER_ID = 3                          # Lukáš Najman (LUNASTAV signer)
+_SIGN_COMPANY_EMAIL      = 'lukas.najman@lunastav.cz'
+
+
+def _get_or_create_role(call_fn, name):
+    ids = call_fn('sign.item.role', 'search', [[['name', '=', name]]])
+    return ids[0] if ids else call_fn('sign.item.role', 'create', [{'name': name}])
+
+
+def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email):
+    """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
+    client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
+    company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
+
+    num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
+    last_page = num_pages
+
+    template_id = call_fn('sign.template', 'create', [{
+        'name': order_name,
+        'sign_item_ids': [
+            (0, 0, {  # Objednatel — right
+                'type_id': _SIGN_SIG_TYPE_ID,
+                'responsible_id': client_role_id,
+                'page': last_page,
+                'posX': 0.55, 'posY': 0.80, 'width': 0.30, 'height': 0.06,
+            }),
+            (0, 0, {  # Zhotovitel — left
+                'type_id': _SIGN_SIG_TYPE_ID,
+                'responsible_id': company_role_id,
+                'page': last_page,
+                'posX': 0.10, 'posY': 0.80, 'width': 0.30, 'height': 0.06,
+            }),
+        ],
+    }])
+
+    call_fn('sign.document', 'create', [{
+        'template_id': template_id,
+        'name': f'{order_name}.pdf',
+        'datas': base64.b64encode(pdf_bytes).decode(),
+        'num_pages': num_pages,
+    }])
+
+    request_id = call_fn('sign.request', 'create', [{
+        'template_id': template_id,
+        'reference': order_name,
+        'send_channel': 'email',
+        'request_item_ids': [
+            (0, 0, {
+                'role_id': client_role_id,
+                'partner_id': client_partner_id,
+                'signer_email': client_email,
+            }),
+            (0, 0, {
+                'role_id': company_role_id,
+                'partner_id': _SIGN_COMPANY_PARTNER_ID,
+                'signer_email': _SIGN_COMPANY_EMAIL,
+            }),
+        ],
+    }])
+
+    call_fn('sign.request', 'action_sent', [[request_id]])
+    return request_id
+
 
 def odoo_connect():
     common = xmlrpc.client.ServerProxy(f'{ODOO_URL}/xmlrpc/2/common')
@@ -810,6 +874,19 @@ def order_form_post(
         'mimetype': 'application/pdf',
     }])
 
+    # Send for signing
+    client_email = partner.get('email', '')
+    sign_note = ''
+    if client_email:
+        try:
+            _create_sign_request(call, pdf_bytes, updated['name'],
+                                 updated['partner_id'][0], client_email)
+            sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
+        except Exception as exc:
+            sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {exc}</p>'
+    else:
+        sign_note = '<p style="color:#c55;font-size:13px;margin:8px 0 0;">Klient nem&#225; e-mail &#8212; &#382;&#225;dost o podpis nebyla odeslána.</p>'
+
     odoo_order_url = f'{ODOO_URL}/odoo/sales/{order_id}'
 
     return f"""<!doctype html>
@@ -817,20 +894,24 @@ def order_form_post(
 <body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
   <div style="background:#fff;border-radius:8px;padding:40px;max-width:480px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
     <div style="font-size:56px;margin-bottom:12px;">&#10003;</div>
-    <h2 style="margin:0 0 12px;">Objednávka vytvořena</h2>
-    <p style="color:#888;font-size:13px;">Přesměrování zpět do Odoo&hellip;</p>
+    <h2 style="margin:0 0 8px;">Objednávka vytvořena</h2>
+    <p style="color:#555;font-size:14px;margin:0;">{updated['name']}</p>
+    {sign_note}
+    <p style="color:#aaa;font-size:12px;margin:16px 0 0;">Přesměrování zpět do Odoo&hellip;</p>
   </div>
   <script>
-    try {{
-      if (window.opener) {{
-        window.opener.location.href = '{odoo_order_url}';
-        window.close();
-      }} else {{
+    setTimeout(function() {{
+      try {{
+        if (window.opener) {{
+          window.opener.location.href = '{odoo_order_url}';
+          window.close();
+        }} else {{
+          window.location.href = '{odoo_order_url}';
+        }}
+      }} catch(e) {{
         window.location.href = '{odoo_order_url}';
       }}
-    }} catch(e) {{
-      window.location.href = '{odoo_order_url}';
-    }}
+    }}, 3000);
   </script>
 </body></html>"""
 
