@@ -1,4 +1,5 @@
 ﻿import base64
+import io
 import os
 import random
 import re
@@ -33,13 +34,38 @@ def _get_or_create_role(call_fn, name):
     return ids[0] if ids else call_fn('sign.item.role', 'create', [{'name': name}])
 
 
+def _find_contract_sig_page(pdf_bytes):
+    """Return the 1-based page number of the main contract signature table.
+
+    The main signature page contains the appendix listing ('Přílohy') and
+    the company signer name ('Najman'). Falls back to None if not detected.
+    """
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text() or ''
+            if ('ílohy' in text or 'Prilohy' in text) and 'Najman' in text:
+                return i + 1
+    except Exception:
+        pass
+    return None
+
+
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
     client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
     company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
 
-    num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
+    try:
+        from pypdf import PdfReader
+        num_pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+    except Exception:
+        num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
     last_page = num_pages
+
+    # Detect main contract signature page (has appendix listing + company name)
+    contract_sig_page = _find_contract_sig_page(pdf_bytes)
 
     # 1. Upload PDF as an attachment
     att_id = call_fn('ir.attachment', 'create', [{
@@ -60,16 +86,24 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         'num_pages': num_pages,
     }])
 
-    # 4. Add signature fields (Objednatel left, Zhotovitel right — matches PDF table layout)
-    for role_id, posX in [(client_role_id, 0.05), (company_role_id, 0.55)]:
-        call_fn('sign.item', 'create', [{
-            'template_id': template_id,
-            'document_id': doc_id,
-            'type_id': _SIGN_SIG_TYPE_ID,
-            'responsible_id': role_id,
-            'page': last_page,
-            'posX': posX, 'posY': 0.80, 'width': 0.30, 'height': 0.06,
-        }])
+    # 4. Place signature fields on both signature pages:
+    #    - Main contract page: Objednatel left (0.10), Zhotovitel right (0.55), mid-page
+    #    - T&C last page: same columns, near bottom
+    sign_locations = []
+    if contract_sig_page and contract_sig_page != last_page:
+        sign_locations.append((contract_sig_page, 0.65))  # main contract sig table
+    sign_locations.append((last_page, 0.72))              # T&C page sig table
+
+    for page_num, posY in sign_locations:
+        for role_id, posX in [(client_role_id, 0.10), (company_role_id, 0.55)]:
+            call_fn('sign.item', 'create', [{
+                'template_id': template_id,
+                'document_id': doc_id,
+                'type_id': _SIGN_SIG_TYPE_ID,
+                'responsible_id': role_id,
+                'page': page_num,
+                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.06,
+            }])
 
     # 5. Create the signing request
     request_id = call_fn('sign.request', 'create', [{
@@ -923,7 +957,8 @@ def order_form_post(
                                  _SIGN_TEST_PARTNER_ID, _SIGN_TEST_EMAIL)
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
-            sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {exc}</p>'
+            import html as _html
+            sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {_html.escape(str(exc))}</p>'
     else:
         sign_note = '<p style="color:#c55;font-size:13px;margin:8px 0 0;">Klient nem&#225; e-mail &#8212; &#382;&#225;dost o podpis nebyla odeslána.</p>'
 
