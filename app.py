@@ -24,6 +24,7 @@ app = FastAPI(title='LUNASTAV Order Service')
 _SIGN_SIG_TYPE_ID        = 1                          # Signature field type id
 _SIGN_COMPANY_PARTNER_ID = 3                          # Lukáš Najman (LUNASTAV signer)
 _SIGN_COMPANY_EMAIL      = 'lukas.najman@lunastav.cz'
+_SIGN_TEST_PARTNER_ID    = 889                        # Tomáš Najman — TEST ONLY, remove before go-live
 _SIGN_TEST_EMAIL         = 'najm.tomas@gmail.com'    # TEST ONLY — remove before go-live
 
 
@@ -59,8 +60,8 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         'num_pages': num_pages,
     }])
 
-    # 4. Add signature fields (each item needs both template_id and document_id)
-    for role_id, posX in [(client_role_id, 0.55), (company_role_id, 0.10)]:
+    # 4. Add signature fields (Objednatel left, Zhotovitel right — matches PDF table layout)
+    for role_id, posX in [(client_role_id, 0.05), (company_role_id, 0.55)]:
         call_fn('sign.item', 'create', [{
             'template_id': template_id,
             'document_id': doc_id,
@@ -919,7 +920,7 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 updated['partner_id'][0], _SIGN_TEST_EMAIL)
+                                 _SIGN_TEST_PARTNER_ID, _SIGN_TEST_EMAIL)
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
             sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {exc}</p>'
