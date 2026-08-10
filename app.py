@@ -34,12 +34,15 @@ def _get_or_create_role(call_fn, name):
     return ids[0] if ids else call_fn('sign.item.role', 'create', [{'name': name}])
 
 
+_SIGN_ANCHOR = '◆'  # ◆ placed invisibly at centre of the signing box in the DOCX
+
+
 def _find_contract_sig_page_and_posY(pdf_bytes):
     """Return (page_num_1based, posY) for the main contract signature table.
 
     Detects the page containing the appendix listing + company signer name,
-    then finds the Y coordinate of the 'Objednatel' footer label (bottom of the
-    signing box) and places the frame above it.  Falls back to (None, 0.47).
+    then finds the ◆ anchor character placed at the vertical centre of the
+    signing box.  Falls back to (None, 0.47).
     """
     try:
         from pypdf import PdfReader
@@ -48,20 +51,17 @@ def _find_contract_sig_page_and_posY(pdf_bytes):
             text = page.extract_text() or ''
             if ('ílohy' not in text and 'Prilohy' not in text) or 'Najman' not in text:
                 continue
-            # Found the page — now locate 'Objednatel' label via visitor
             page_height = float(page.mediabox.height)
-            objednatel_ys = []
+            anchor_ys = []
             def visitor(text_chunk, cm, tm, fontDict, fontSize):
-                if text_chunk and 'Objednatel' in text_chunk:
-                    objednatel_ys.append(tm[5])  # Y from bottom in PDF points
+                if text_chunk and _SIGN_ANCHOR in text_chunk:
+                    anchor_ys.append(tm[5])  # Y from bottom in PDF points
             page.extract_text(visitor_text=visitor)
-            if objednatel_ys:
-                # Lowest Y on the page = the signature table footer label
-                label_y_pdf = min(objednatel_ys)
-                # Convert to Odoo posY (fraction from top, 0=top 1=bottom)
-                label_posY = 1.0 - (label_y_pdf / page_height)
-                # Signature box sits above the label; place frame ~13% above it (centred)
-                posY = round(max(0.05, label_posY - 0.13), 3)
+            if anchor_ys:
+                anchor_y_pdf = anchor_ys[0]
+                # Convert to Odoo posY (0=top, 1=bottom); centre frame on anchor
+                anchor_posY = 1.0 - (anchor_y_pdf / page_height)
+                posY = round(max(0.05, anchor_posY - 0.03), 3)  # 0.03 = half frame height
             else:
                 posY = 0.47
             return (i + 1, posY)
