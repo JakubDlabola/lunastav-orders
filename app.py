@@ -48,7 +48,7 @@ def _anchor_posY_on_page(page, label, fallback):
     page.extract_text(visitor_text=visitor)
     if anchor_ys:
         anchor_posY = 1.0 - (anchor_ys[0] / page_height)
-        posY = round(max(0.05, anchor_posY - 0.03), 3)  # 0.03 = half frame height
+        posY = round(max(0.05, anchor_posY - 0.02), 3)
         logging.warning(f'SIGN_ANCHOR {label}: anchor_posY={anchor_posY:.4f} → posY={posY}')
         return posY
     logging.warning(f'SIGN_ANCHOR {label}: not found, using fallback={fallback}')
@@ -248,7 +248,13 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     _p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': ['email', 'phone', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
     partner_email = _p.get('email') or ''
     partner_phone = _p.get('phone') or ''
-    partner_dob   = _p.get('x_studio_datum_narozeni') or ''
+    _dob_raw      = _p.get('x_studio_datum_narozeni') or ''
+    try:
+        from datetime import date as _date
+        _d = _date.fromisoformat(_dob_raw)
+        partner_dob = f'{_d.day:02d}.{_d.month:02d}.{_d.year}'
+    except Exception:
+        partner_dob = ''
 
     zastavena_plocha = ''
     remaining_grant_k = '250000'
@@ -323,13 +329,12 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Datum narození</label>
-        <input type="date" name="client_dob" value="{partner_dob}">
+        <input type="text" name="client_dob" value="{partner_dob}" placeholder="DD.MM.RRRR">
       </div>
-    </div>
-
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;">
-      <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
-      <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;margin-top:4px;">
+        <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
+        <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
+      </div>
     </div>
 
     <span class="field-label">Typ práce</span>
@@ -956,7 +961,12 @@ def order_form_post(
     if not partner.get('phone') and client_phone:
         patch['phone'] = client_phone
     if not partner.get('x_studio_datum_narozeni') and client_dob:
-        patch['x_studio_datum_narozeni'] = client_dob
+        try:
+            parts = client_dob.strip().replace('/', '.').split('.')
+            d, m, y = parts[0], parts[1], parts[2]
+            patch['x_studio_datum_narozeni'] = f'{y}-{m.zfill(2)}-{d.zfill(2)}'
+        except Exception:
+            pass
     if patch:
         call('res.partner', 'write', [[partner_id_val], patch])
         partner.update(patch)
