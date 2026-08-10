@@ -60,8 +60,8 @@ def _find_contract_sig_page_and_posY(pdf_bytes):
                 label_y_pdf = min(objednatel_ys)
                 # Convert to Odoo posY (fraction from top, 0=top 1=bottom)
                 label_posY = 1.0 - (label_y_pdf / page_height)
-                # Signature box sits above the label; place frame ~9% above the label
-                posY = round(max(0.05, label_posY - 0.09), 3)
+                # Signature box sits above the label; place frame ~13% above it (centred)
+                posY = round(max(0.05, label_posY - 0.13), 3)
             else:
                 posY = 0.47
             return (i + 1, posY)
@@ -70,8 +70,11 @@ def _find_contract_sig_page_and_posY(pdf_bytes):
     return (None, 0.47)
 
 
-def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email):
+def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
+                         company_partner_id=None, company_email=None):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
+    company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
+    company_email      = company_email      or _SIGN_COMPANY_EMAIL
     client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
     company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
 
@@ -110,7 +113,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     sign_locations = []
     if contract_sig_page and contract_sig_page != last_page:
         sign_locations.append((contract_sig_page, contract_sig_posY))
-    sign_locations.append((last_page, 0.72))              # T&C page — fixed layout
+    sign_locations.append((last_page, 0.78))              # T&C page — fixed layout
 
     for page_num, posY in sign_locations:
         for role_id, posX in [(client_role_id, 0.10), (company_role_id, 0.55)]:
@@ -130,7 +133,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         'send_channel': 'email',
         'request_item_ids': [
             (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id, 'signer_email': client_email}),
-            (0, 0, {'role_id': company_role_id, 'partner_id': _SIGN_COMPANY_PARTNER_ID, 'signer_email': _SIGN_COMPANY_EMAIL}),
+            (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id, 'signer_email': company_email}),
         ],
     }])
 
@@ -972,7 +975,9 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 _SIGN_TEST_PARTNER_ID, _SIGN_TEST_EMAIL)
+                                 partner_id_val, client_email,
+                                 company_partner_id=_SIGN_TEST_PARTNER_ID,
+                                 company_email=_SIGN_TEST_EMAIL)
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
             import html as _html
