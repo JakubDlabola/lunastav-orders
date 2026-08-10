@@ -40,50 +40,53 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
     last_page = num_pages
 
-    template_id = call_fn('sign.template', 'create', [{
-        'name': order_name,
-        'sign_item_ids': [
-            (0, 0, {  # Objednatel — right
-                'type_id': _SIGN_SIG_TYPE_ID,
-                'responsible_id': client_role_id,
-                'page': last_page,
-                'posX': 0.55, 'posY': 0.80, 'width': 0.30, 'height': 0.06,
-            }),
-            (0, 0, {  # Zhotovitel — left
-                'type_id': _SIGN_SIG_TYPE_ID,
-                'responsible_id': company_role_id,
-                'page': last_page,
-                'posX': 0.10, 'posY': 0.80, 'width': 0.30, 'height': 0.06,
-            }),
-        ],
+    # 1. Upload PDF as an attachment
+    att_id = call_fn('ir.attachment', 'create', [{
+        'name': f'{order_name}.pdf',
+        'type': 'binary',
+        'datas': base64.b64encode(pdf_bytes).decode(),
+        'mimetype': 'application/pdf',
     }])
 
-    call_fn('sign.document', 'create', [{
+    # 2. Create the sign template (empty — items are tied to the document)
+    template_id = call_fn('sign.template', 'create', [{'name': order_name}])
+
+    # 3. Create sign.document linking the attachment to the template
+    doc_id = call_fn('sign.document', 'create', [{
         'template_id': template_id,
+        'attachment_id': att_id,
         'name': f'{order_name}.pdf',
-        'datas': base64.b64encode(pdf_bytes).decode(),
         'num_pages': num_pages,
     }])
 
+    # 4. Add signature fields (each item needs both template_id and document_id)
+    for role_id, posX in [(client_role_id, 0.55), (company_role_id, 0.10)]:
+        call_fn('sign.item', 'create', [{
+            'template_id': template_id,
+            'document_id': doc_id,
+            'type_id': _SIGN_SIG_TYPE_ID,
+            'responsible_id': role_id,
+            'page': last_page,
+            'posX': posX, 'posY': 0.80, 'width': 0.30, 'height': 0.06,
+        }])
+
+    # 5. Create the signing request
     request_id = call_fn('sign.request', 'create', [{
         'template_id': template_id,
         'reference': order_name,
         'send_channel': 'email',
         'request_item_ids': [
-            (0, 0, {
-                'role_id': client_role_id,
-                'partner_id': client_partner_id,
-                'signer_email': client_email,
-            }),
-            (0, 0, {
-                'role_id': company_role_id,
-                'partner_id': _SIGN_COMPANY_PARTNER_ID,
-                'signer_email': _SIGN_COMPANY_EMAIL,
-            }),
+            (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id, 'signer_email': client_email}),
+            (0, 0, {'role_id': company_role_id, 'partner_id': _SIGN_COMPANY_PARTNER_ID, 'signer_email': _SIGN_COMPANY_EMAIL}),
         ],
     }])
 
-    call_fn('sign.request', 'action_sent', [[request_id]])
+    # 6. Send — method returns None which XML-RPC cannot serialize; that's expected
+    try:
+        call_fn('sign.request', 'send_signature_accesses', [[request_id]])
+    except Exception as e:
+        if 'cannot marshal None' not in str(e):
+            raise
     return request_id
 
 
@@ -198,7 +201,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
                 remaining_grant_k = str(int(m.group(1)) * 1000)
 
     return f"""<!doctype html>
-<html>
+<html lang="cs">
 <head>
   <meta charset="utf-8">
   <title>Nová objednávka</title>
