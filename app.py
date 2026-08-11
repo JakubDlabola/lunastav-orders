@@ -1028,3 +1028,63 @@ def order_form_post(
 @app.get('/health')
 def health():
     return {'status': 'ok'}
+
+@app.get('/podpisano', response_class=HTMLResponse)
+def sign_success():
+    return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dokument podepsán – LUNASTAV</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+    padding: 48px 40px;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+  }
+  .icon {
+    width: 72px; height: 72px;
+    background: #e8f5e9;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 36px;
+  }
+  h1 { font-size: 1.6rem; color: #1a1a1a; margin-bottom: 12px; }
+  p  { font-size: 1rem; color: #555; line-height: 1.6; margin-bottom: 8px; }
+  .logo { margin-top: 36px; }
+  .logo a { color: #c8a840; font-weight: 600; text-decoration: none; font-size: 1.05rem; }
+  .logo a:hover { text-decoration: underline; }
+  .divider { border: none; border-top: 1px solid #eee; margin: 32px 0; }
+  .contact { font-size: 0.9rem; color: #888; }
+  .contact a { color: #555; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">&#10003;</div>
+  <h1>Dokument byl úspěšně podepsán</h1>
+  <p>Děkujeme! Podepsaný dokument obdržíte e-mailem.</p>
+  <p>Budeme Vás kontaktovat ohledně dalšího postupu.</p>
+  <hr class="divider">
+  <div class="logo">
+    <a href="https://www.lunastav.cz/">www.lunastav.cz</a>
+  </div>
+</div>
+</body>
+</html>""")
