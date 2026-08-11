@@ -996,10 +996,9 @@ def order_form_post(
             call('sale.order', 'write', [[order_id], {'state': 'sent'}])
             call('sale.order', 'message_post', [[order_id]], {
                 'body': (
-                    'Smlouva odeslána k podpisu.<br/>'
-                    'Čeká na podpis:<br/>'
-                    f'• {partner.get("name", client_email)} (Objednatel)<br/>'
-                    '• Lukáš Najman, LUNASTAV CZ s.r.o. (Zhotovitel)'
+                    'Smlouva odeslána k podpisu. '
+                    f'Čeká na podpis: {partner.get("name", client_email)} (Objednatel), '
+                    'Lukáš Najman, LUNASTAV CZ s.r.o. (Zhotovitel).'
                 ),
                 'message_type': 'comment',
                 'subtype_xmlid': 'mail.mt_note',
