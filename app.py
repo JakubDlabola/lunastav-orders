@@ -987,9 +987,7 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 partner_id_val, client_email,
-                                 company_partner_id=_SIGN_TEST_PARTNER_ID,
-                                 company_email=_SIGN_TEST_EMAIL)
+                                 partner_id_val, client_email)
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
             import html as _html
@@ -1080,7 +1078,6 @@ def sign_success():
   <div class="icon">&#10003;</div>
   <h1>Dokument byl úspěšně podepsán</h1>
   <p>Děkujeme! Podepsaný dokument obdržíte e-mailem.</p>
-  <p>Budeme Vás kontaktovat ohledně dalšího postupu.</p>
   <hr class="divider">
   <div class="logo">
     <a href="https://www.lunastav.cz/">www.lunastav.cz</a>
