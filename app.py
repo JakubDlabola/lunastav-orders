@@ -993,6 +993,17 @@ def order_form_post(
                                  partner_id_val, client_email,
                                  company_partner_id=_SIGN_TEST_PARTNER_ID,
                                  company_email=_SIGN_TEST_EMAIL)
+            call('sale.order', 'write', [[order_id], {'state': 'sent'}])
+            call('sale.order', 'message_post', [[order_id]], {
+                'body': (
+                    '<p>Smlouva odeslána k podpisu.</p>'
+                    '<p>Čeká na podpis:<br/>'
+                    f'&bull; {partner.get("name", client_email)} (Objednatel)<br/>'
+                    '&bull; Luk&aacute;&scaron; Najman, LUNASTAV CZ s.r.o. (Zhotovitel)</p>'
+                ),
+                'message_type': 'comment',
+                'subtype_xmlid': 'mail.mt_note',
+            })
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
             import html as _html
