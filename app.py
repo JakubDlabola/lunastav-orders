@@ -129,13 +129,14 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'type_id': _SIGN_SIG_TYPE_ID,
                 'responsible_id': role_id,
                 'page': page_num,
-                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.06,
+                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.10,
             }])
 
     # 5. Create the signing request
     request_id = call('sign.request', 'create', [{
         'template_id': template_id,
         'reference': order_name,
+        'subject': f'LUNASTAV - potvrzení SOD {order_name}',
         'send_channel': 'email',
         'request_item_ids': [
             (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id, 'signer_email': client_email}),
@@ -315,7 +316,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <div style="display:grid;gap:8px;margin-bottom:20px;">
       <div>
         <label style="font-size:12px;color:#888;">E-mail</label>
-        <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta">
+        <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta" required>
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Telefon</label>
@@ -966,6 +967,8 @@ def order_form_post(
     if patch:
         call('res.partner', 'write', [[partner_id_val], patch])
         partner.update(patch)
+    if not partner.get('email') or '@' not in partner['email']:
+        raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání smlouvy k podpisu.')
     lines = call('sale.order.line', 'read', [updated['order_line']], {'fields': [
         'product_id', 'name', 'product_uom_qty', 'product_uom_id',
         'price_unit', 'price_subtotal', 'discount', 'display_type', 'is_downpayment',

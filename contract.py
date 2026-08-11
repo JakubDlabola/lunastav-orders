@@ -11,6 +11,13 @@ from lxml import etree
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
 
+def _fmt_qty(q):
+    try:
+        q = float(q)
+        return str(int(q)) if q == int(q) else str(q)
+    except (TypeError, ValueError):
+        return str(q) if q else ''
+
 # Inline bold/highlight markers — control chars never present in normal text
 _BOLD_ON       = '\x01B\x01'
 _BOLD_OFF      = '\x01/B\x01'
@@ -203,8 +210,8 @@ def fill_items_table(doc, items):
             '{/hasItems}': '',
             '{BusinessCaseItemCode}': item.get('code', ''),
             '{BusinessCaseItemName}': item.get('name', ''),
-            '{BusinessCaseItemCount}': '' if item.get('code', '') in ('D', '5000A', '5000B') else str(item.get('qty', '')),
-            '{BusinessCaseItemUnit}': '' if item.get('code', '') in ('D', '5000A', '5000B') else item.get('unit', ''),
+            '{BusinessCaseItemCount}': '1' if item.get('code') in ('D', '5000A', '5000B') else _fmt_qty(item.get('qty', 0)),
+            '{BusinessCaseItemUnit}': 'ks' if item.get('code') in ('D', '5000A', '5000B') else item.get('unit', ''),
         })
         parent.insert(insert_idx + i, new_tr)
 
