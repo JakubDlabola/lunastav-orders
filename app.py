@@ -990,7 +990,9 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 partner_id_val, client_email)
+                                 partner_id_val, client_email,
+                                 company_partner_id=_SIGN_TEST_PARTNER_ID,
+                                 company_email=_SIGN_TEST_EMAIL)
             sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
         except Exception as exc:
             import html as _html
