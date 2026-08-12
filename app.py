@@ -48,7 +48,7 @@ def _anchor_posY_on_page(page, label, fallback):
     page.extract_text(visitor_text=visitor)
     if anchor_ys:
         anchor_posY = 1.0 - (anchor_ys[0] / page_height)
-        posY = round(max(0.05, anchor_posY - 0.055), 3)
+        posY = round(max(0.05, anchor_posY - 0.08), 3)
         logging.warning(f'SIGN_ANCHOR {label}: anchor_posY={anchor_posY:.4f} → posY={posY}')
         return posY
     logging.warning(f'SIGN_ANCHOR {label}: not found, using fallback={fallback}')
