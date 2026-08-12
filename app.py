@@ -129,7 +129,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'type_id': _SIGN_SIG_TYPE_ID,
                 'responsible_id': role_id,
                 'page': page_num,
-                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.10,
+                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.14,
             }])
 
     # 5. Create the signing request
@@ -364,9 +364,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <input type="number" name="qty_m2_roof" id="qty_m2_roof" value="{zastavena_plocha}" min="1" step="1" oninput="calc(); updatePopisDila()">
       <span class="field-label">Doplňkové práce</span>
       <div class="options">
-        <label class="opt-wrap"><input type="checkbox" name="extra_5000a" value="1"><span class="opt-btn">Otevření a zavření falcované střechy</span></label>
-        <label class="opt-wrap"><input type="checkbox" name="extra_5000b" value="1"><span class="opt-btn">Otevření a zavření PVC folie</span></label>
-        <label class="opt-wrap"><input type="checkbox" name="extra_5000c" value="1"><span class="opt-btn">Otevření a zavření lepenkové střechy</span></label>
+        <label class="opt-wrap"><input type="checkbox" name="extra_5000a" value="1" onchange="selectExtra5000(this)"><span class="opt-btn">Otevření a zavření falcované střechy</span></label>
+        <label class="opt-wrap"><input type="checkbox" name="extra_5000b" value="1" onchange="selectExtra5000(this)"><span class="opt-btn">Otevření a zavření PVC folie</span></label>
+        <label class="opt-wrap"><input type="checkbox" name="extra_5000c" value="1" onchange="selectExtra5000(this)"><span class="opt-btn">Otevření a zavření lepenkové střechy</span></label>
       </div>
     </div>
 
@@ -464,6 +464,15 @@ const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
 
 const _STRIKANA_TEXT = 'Stavebn\u00ed prostor bude kv\u016fli zamezen\u00ed pr\u016fvanu uzav\u0159en a vytopen minim\u00e1ln\u011b na teplotu 17\u00b0C. M\u00edsta uvnit\u0159 stavebn\u00edho prostoru, jen\u017e nesm\u00ed b\u00fdt zne\u010di\u0161t\u011bna aplika\u010dn\u00ed chemi\u00ed, budou objednatelem zakryta, v p\u0159\u00edpad\u011b venkovn\u00ed aplikace objednatel proti p\u0159\u00edpadn\u00e9mu zne\u010di\u0161t\u011bn\u00ed zaji\u0161t\u00ed okol\u00ed v dosahu cca 100 m. Objednatel zaji\u0161t\u00ed, aby okolo kom\u00ednov\u00e9ho t\u011blesa byla neho\u0159lav\u00e1 vrstva v minim\u00e1ln\u00ed tlou\u0161\u0165ce 50 mm. S\u00e1drokartonov\u00e9 ro\u0161ty mus\u00ed b\u00fdt s ohledem na rezervu pro b\u011b\u017enou toleranci tlou\u0161\u0165ky PUR p\u011bny nav\u00fd\u0161eny o 3 cm. Objednatel mus\u00ed b\u011bhem pr\u016fb\u011bhu aplikace izolace zamezit vstupu nepovolan\u00fdch do stavebn\u00edch prostor\u016f.';
 const _BASE_STAVEBNI = 'Stavební připravenost spočívá především ve vyklizení místa realizace.';
+
+function selectExtra5000(el) {{
+  if (el.checked) {{
+    document.querySelectorAll('input[name=extra_5000a],input[name=extra_5000b],input[name=extra_5000c]').forEach(function(cb) {{
+      if (cb !== el) cb.checked = false;
+    }});
+  }}
+  updatePopisDila();
+}}
 
 function updateStavebni() {{
   const hasRoof = document.getElementById('chk_roof').checked;
