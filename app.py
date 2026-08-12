@@ -133,7 +133,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'type_id': _SIGN_SIG_TYPE_ID,
                 'responsible_id': role_id,
                 'page': page_num,
-                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.165,
+                'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.16,
             }])
 
     # 5. Create the signing request
