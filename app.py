@@ -366,6 +366,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <div class="options">
         <label class="opt-wrap"><input type="checkbox" name="extra_5000a" value="1"><span class="opt-btn">Otevření a zavření falcované střechy</span></label>
         <label class="opt-wrap"><input type="checkbox" name="extra_5000b" value="1"><span class="opt-btn">Otevření a zavření PVC folie</span></label>
+        <label class="opt-wrap"><input type="checkbox" name="extra_5000c" value="1"><span class="opt-btn">Otevření a zavření lepenkové střechy</span></label>
       </div>
     </div>
 
@@ -507,8 +508,9 @@ function updatePopisDila() {{
     }}
     const is5000A = document.querySelector('input[name=extra_5000a]')?.checked;
     const is5000B = document.querySelector('input[name=extra_5000b]')?.checked;
-    if (is5000A || is5000B) {{
-      const krytina = is5000A ? 'falcovaný plech' : 'PVC folie';
+    const is5000C = document.querySelector('input[name=extra_5000c]')?.checked;
+    if (is5000A || is5000B || is5000C) {{
+      const krytina = is5000A ? 'falcovaný plech' : is5000B ? 'PVC folie' : 'lepenka';
       lines.push('Jedná se o plochou střechu. Střešní krytina je ' + krytina + '. Zhotovitel do dutiny vstoupí otvorem, který ve střešní krytině vytvoří a po realizaci opět zapraví.');
     }}
   }}
@@ -773,6 +775,7 @@ def order_form_post(
     split: str = Form(None),
     extra_5000a: str = Form(''),
     extra_5000b: str = Form(''),
+    extra_5000c: str = Form(''),
     qty_5100: str = Form(''),
     qty_5101: str = Form(''),
     addr_same: str = Form(''),
@@ -904,6 +907,7 @@ def order_form_post(
     extra_needed = []
     if has_roof and extra_5000a: extra_needed.append('5000A')
     if has_roof and extra_5000b: extra_needed.append('5000B')
+    if has_roof and extra_5000c: extra_needed.append('5000C')
     if has_ceiling and qty_5100_f > 0: extra_needed.append('5100')
     if has_ceiling and qty_5101_f > 0: extra_needed.append('5101')
     if extra_needed:
@@ -911,7 +915,7 @@ def order_form_post(
                            [[['default_code', 'in', extra_needed]]],
                            {'fields': ['id', 'default_code', 'lst_price'], 'limit': 10})
         extra_map = {p['default_code']: p for p in extra_prods}
-        for code in ['5000A', '5000B']:
+        for code in ['5000A', '5000B', '5000C']:
             if code in extra_map:
                 order_lines.append((0, 0, {
                     'product_id': extra_map[code]['id'],
@@ -1002,7 +1006,9 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 partner_id_val, client_email)
+                                 partner_id_val, client_email,
+                                 company_partner_id=_SIGN_TEST_PARTNER_ID,
+                                 company_email=_SIGN_TEST_EMAIL)
             call('sale.order', 'write', [[order_id], {'state': 'sent'}])
             call('sale.order', 'message_post', [[order_id]], {
                 'body': (
