@@ -167,7 +167,7 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
     orders = call('sale.order', 'read', [[order_id]], {'fields': [
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
         'x_studio_adresa_realizace', 'x_studio_popis_dila',
-        'x_studio_zaloha_kc', 'x_studio_termin_zalohy_1',
+        'x_studio_zaloha_kc', 'x_studio_termin_zalohy_2',
         'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
         'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
@@ -418,6 +418,14 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <div class="split-note" id="split-note"></div>
     </div>
 
+    <div id="termin-zalohy-section" class="hidden">
+      <span class="field-label" style="margin-top:20px;">Záloha splatná</span>
+      <div class="options">
+        <label class="opt-wrap"><input type="radio" name="termin_zalohy_2" value="od podepsání objednávky" onchange="checkSubmit()"><span class="opt-btn">od podepsání objednávky</span></label>
+        <label class="opt-wrap"><input type="radio" name="termin_zalohy_2" value="obdržení dotace" onchange="checkSubmit()"><span class="opt-btn">obdržení dotace</span></label>
+      </div>
+    </div>
+
     <div id="termin-section" class="hidden">
       <span class="field-label" style="margin-top:20px;">Termín dokončení</span>
       <div class="options">
@@ -548,6 +556,7 @@ function onTypesChange() {{
   document.getElementById('windows-section').classList.toggle('hidden', !hasWin);
   const anyType = hasRoof || hasCeil || hasWin;
   document.getElementById('split-section').classList.toggle('hidden', !anyType);
+  document.getElementById('termin-zalohy-section').classList.toggle('hidden', !anyType);
   document.getElementById('termin-section').classList.toggle('hidden', !anyType);
   const winOnly = hasWin && !hasRoof && !hasCeil;
   document.getElementById('split-80-20').classList.toggle('hidden', !hasWin);
@@ -579,12 +588,12 @@ function updateTermin() {{
   let auto = '';
   if (days) {{
     if (hasZaloha) {{
-      auto = 'do ' + days + ' dnů od obdržení zálohové platby ve výši ' + pct + ' % z celkové ceny.';
+      auto = 'do ' + days + ' dnů od obdržení zálohové platby ve výši ' + pct + ' % z celkové ceny';
     }} else {{
       const condEl2 = document.querySelector('input[name=termin_cond]:checked');
       if (condEl2) {{
         const cond = condEl2.value === 'dotace' ? 'schválení dotace' : 'podpisu smlouvy';
-        auto = 'do ' + days + ' dnů od ' + cond + '.';
+        auto = 'do ' + days + ' dnů od ' + cond;
       }}
     }}
   }}
@@ -728,10 +737,11 @@ function checkSubmit() {{
                + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
                + parseFloat(document.getElementById('inp_elig_windows').value || 0);
   const terminDays = document.querySelector('input[name=termin_days]:checked');
+  const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
   document.getElementById('submitBtn').disabled = !(
     (!hasRoof || (matRoof && qRoof > 0)) &&
     (!hasCeil || (matCeil && qCeil > 0)) &&
-    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays
+    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays && terminZalohy2
   );
 }}
 
@@ -771,6 +781,7 @@ def order_form_post(
     thickness_roof: str = Form(''),
     thickness_ceiling: str = Form(''),
     termin_dokonceni: str = Form(''),
+    termin_zalohy_2: str = Form(None),
     stavebni_pripravenost: str = Form(''),
     client_email: str = Form(''),
     client_phone: str = Form(''),
@@ -934,6 +945,7 @@ def order_form_post(
         'x_studio_adresa_realizace': addr_value,
         'x_studio_popis_dila': popis_dila or '',
         'x_studio_termin_dokonceni_2': termin_dokonceni or '',
+        'x_studio_termin_zalohy_2': termin_zalohy_2 or '',
         'x_studio_stavebni_pripravenost': stavebni_pripravenost or '',
         'x_studio_datum_podpisu_smlouvy': date.today().isoformat(),
     }])
@@ -942,7 +954,7 @@ def order_form_post(
     updated = call('sale.order', 'read', [[order_id]], {'fields': [
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
         'x_studio_adresa_realizace', 'x_studio_popis_dila',
-        'x_studio_zaloha_kc', 'x_studio_termin_zalohy_1',
+        'x_studio_zaloha_kc', 'x_studio_termin_zalohy_2',
         'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
         'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
