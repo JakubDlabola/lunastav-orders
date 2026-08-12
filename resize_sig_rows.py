@@ -5,8 +5,8 @@ from docx.oxml.ns import qn
 from lxml import etree
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
-OLD_HEIGHT = '1900'
-NEW_HEIGHT = '2600'
+OLD_HEIGHT = '2600'
+NEW_HEIGHT = '2200'
 
 doc = Document(TEMPLATE_PATH)
 

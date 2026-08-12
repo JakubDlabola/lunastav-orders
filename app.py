@@ -116,10 +116,14 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     # 4. Place signature fields on both signature pages:
     #    - Main contract page: Objednatel left (0.10), Zhotovitel right (0.55), mid-page
     #    - T&C last page: same columns, near bottom
+    # If last_page is one past contract_sig_page, it's a blank overflow page — ignore it
+    effective_last = (contract_sig_page
+                      if contract_sig_page and last_page == contract_sig_page + 1
+                      else last_page)
     sign_locations = []
-    if contract_sig_page and contract_sig_page != last_page:
+    if contract_sig_page and contract_sig_page != effective_last:
         sign_locations.append((contract_sig_page, contract_sig_posY))
-    sign_locations.append((last_page, tc_sig_posY))
+    sign_locations.append((effective_last, tc_sig_posY))
 
     for page_num, posY in sign_locations:
         for role_id, posX in [(client_role_id, 0.15), (company_role_id, 0.55)]:
