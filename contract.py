@@ -151,6 +151,28 @@ def replace_in_element(element, replacements, bold_keys=None):
             _build_run_text(first_r, new_text)
 
 
+def _remove_trailing_blank_page(doc):
+    """Shrink the last empty paragraph to 1pt so it doesn't create a blank page."""
+    body = doc.element.body
+    last_p = next((c for c in reversed(list(body)) if c.tag == qn('w:p')), None)
+    if last_p is None:
+        return
+    if ''.join(t.text or '' for t in last_p.iter(qn('w:t'))).strip():
+        return
+    pPr = last_p.find(qn('w:pPr'))
+    if pPr is None:
+        pPr = etree.SubElement(last_p, qn('w:pPr'))
+        last_p.insert(0, pPr)
+    rPr = pPr.find(qn('w:rPr'))
+    if rPr is None:
+        rPr = etree.SubElement(pPr, qn('w:rPr'))
+    for tag in (qn('w:sz'), qn('w:szCs')):
+        el = rPr.find(tag)
+        if el is None:
+            el = etree.SubElement(rPr, tag)
+        el.set(qn('w:val'), '2')  # 1pt = 2 half-points
+
+
 def accept_track_changes(doc):
     """Accept all tracked changes: keep inserted text, discard deleted text."""
     body = doc.element.body
@@ -221,6 +243,7 @@ def fill_items_table(doc, items):
 def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     doc = Document(TEMPLATE_PATH)
     accept_track_changes(doc)
+    _remove_trailing_blank_page(doc)
     set_page_header(doc, order.get('name', ''))
 
     TAX = 1.12
