@@ -419,9 +419,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     </div>
 
     <div id="termin-zalohy-section" class="hidden">
-      <span class="field-label" style="margin-top:20px;">Záloha splatná</span>
+      <span class="field-label" style="margin-top:20px;">Záloha splatná do 14 dnů ode dne</span>
       <div class="options">
-        <label class="opt-wrap"><input type="radio" name="termin_zalohy_2" value="od podepsání objednávky" onchange="checkSubmit()"><span class="opt-btn">od podepsání objednávky</span></label>
+        <label class="opt-wrap"><input type="radio" name="termin_zalohy_2" value="podepsání objednávky" onchange="checkSubmit()"><span class="opt-btn">podepsání objednávky</span></label>
         <label class="opt-wrap"><input type="radio" name="termin_zalohy_2" value="obdržení dotace" onchange="checkSubmit()"><span class="opt-btn">obdržení dotace</span></label>
       </div>
     </div>
@@ -1002,9 +1002,7 @@ def order_form_post(
     if client_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 partner_id_val, client_email,
-                                 company_partner_id=_SIGN_TEST_PARTNER_ID,
-                                 company_email=_SIGN_TEST_EMAIL)
+                                 partner_id_val, client_email)
             call('sale.order', 'write', [[order_id], {'state': 'sent'}])
             call('sale.order', 'message_post', [[order_id]], {
                 'body': (
