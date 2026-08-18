@@ -265,7 +265,7 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
 
 
 @app.get('/order-form', response_class=HTMLResponse)
-def order_form_get(order_id: int = Query(...), key: str = Query(...)):
+def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int = Query(0)):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -344,10 +344,12 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 <div class="card">
   <h2>Nová objednávka</h2>
   <div class="subtitle">{partner_name} &middot; {order['name']}</div>
+  {'<div style="background:#c00;color:#fff;font-size:12px;font-weight:bold;text-align:center;padding:4px 8px;border-radius:4px;margin-bottom:12px;">TEST REŽIM — podpis jde Tomáši Najmanovi</div>' if test else ''}
 
   <form method="post" action="/order-form" id="mainForm">
     <input type="hidden" name="order_id" value="{order_id}">
     <input type="hidden" name="key" value="{key}">
+    <input type="hidden" name="test" value="{test}">
     <input type="hidden" name="eligible_roof"        id="inp_elig_roof"    value="0">
     <input type="hidden" name="eligible_ceiling"     id="inp_elig_ceiling" value="0">
     <input type="hidden" name="eligible_windows"     id="inp_elig_windows" value="0">
@@ -830,6 +832,7 @@ document.getElementById('mainForm').addEventListener('change', () => {{ calc(); 
 def order_form_post(
     order_id: int = Form(...),
     key: str = Form(...),
+    test: int = Form(0),
     has_roof: str = Form(''),
     has_ceiling: str = Form(''),
     has_windows: str = Form(''),
@@ -1090,8 +1093,8 @@ def order_form_post(
     try:
         _req_id, sign_url = _create_sign_request(call, pdf_bytes, updated['name'],
                              partner_id_val, partner.get('email', ''),
-                             company_partner_id=_SIGN_COMPANY_PARTNER_ID,
-                             company_email=_SIGN_COMPANY_EMAIL)
+                             company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
+                             company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL)
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
