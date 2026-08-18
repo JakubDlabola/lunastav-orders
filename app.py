@@ -183,7 +183,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                     [[('sign_request_id', '=', request_id), ('role_id', '=', client_role_id)]],
                     {'fields': ['access_token']})
     if items:
-        sign_url = f'{ODOO_URL}/odoo/sign/{request_id}/{items[0]["access_token"]}'
+        sign_url = f'{ODOO_URL}/sign/document/{request_id}/{items[0]["access_token"]}'
 
     return request_id, sign_url
 
