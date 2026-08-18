@@ -232,8 +232,8 @@ def fill_items_table(doc, items):
             '{/hasItems}': '',
             '{BusinessCaseItemCode}': item.get('code', ''),
             '{BusinessCaseItemName}': item.get('name', ''),
-            '{BusinessCaseItemCount}': '1' if item.get('code') in ('D', '5000A', '5000B') else _fmt_qty(item.get('qty', 0)),
-            '{BusinessCaseItemUnit}': 'ks' if item.get('code') in ('D', '5000A', '5000B') else item.get('unit', ''),
+            '{BusinessCaseItemCount}': '1' if item.get('code') in ('D', '5000A', '5000B', '5000C') else _fmt_qty(item.get('qty', 0)),
+            '{BusinessCaseItemUnit}': 'ks' if item.get('code') in ('D', '5000A', '5000B', '5000C') else item.get('unit', ''),
         })
         parent.insert(insert_idx + i, new_tr)
 

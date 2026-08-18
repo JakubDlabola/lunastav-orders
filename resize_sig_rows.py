@@ -1,12 +1,17 @@
-"""Increase signature row heights in the DOCX template from 1200 → 1900 twips."""
+"""
+Set signature row heights in the DOCX template to 2600 twips (~46 mm).
+The committed template already has 2600 twips — re-running this on the
+committed file is safe (nothing matches OLD_HEIGHT and no changes are made).
+Run only if the template is reset to the original (1200 twips rows).
+"""
 import os
 from docx import Document
 from docx.oxml.ns import qn
 from lxml import etree
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
-OLD_HEIGHT = '2600'
-NEW_HEIGHT = '2200'
+OLD_HEIGHT = '1200'
+NEW_HEIGHT = '2600'
 
 doc = Document(TEMPLATE_PATH)
 

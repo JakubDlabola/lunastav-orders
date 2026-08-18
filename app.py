@@ -4,12 +4,13 @@ import logging
 import os
 import random
 import re
+import time
 import xmlrpc.client
 from datetime import date
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from contract import generate_contract
 
@@ -28,6 +29,15 @@ _SIGN_COMPANY_PARTNER_ID = 3                          # Lukáš Najman (LUNASTAV
 _SIGN_COMPANY_EMAIL      = 'lukas.najman@lunastav.cz'
 _SIGN_TEST_PARTNER_ID    = 889                        # Tomáš Najman — TEST ONLY, remove before go-live
 _SIGN_TEST_EMAIL         = 'najm.tomas@gmail.com'    # TEST ONLY — remove before go-live
+
+# SMS verification — disabled until SMS provider is configured
+# _TWILIO_SID  = os.environ.get('TWILIO_ACCOUNT_SID', '')
+# _TWILIO_AUTH = os.environ.get('TWILIO_AUTH_TOKEN', '')
+# _TWILIO_FROM = os.environ.get('TWILIO_FROM', '')
+# _RAILWAY_URL = 'https://lunastav-orders-production.up.railway.app'
+# _sms_codes: dict = {}
+# _SMS_TTL          = 600
+# _SMS_MAX_ATTEMPTS = 5
 
 
 def _get_or_create_role(call_fn, name):
@@ -63,6 +73,25 @@ def _find_contract_sig_page_and_posY(reader):
             continue
         return (i + 1, _anchor_posY_on_page(page, f'contract p={i+1}', 0.47))
     return (None, 0.47)
+
+
+# ── SMS verification (disabled) ───────────────────────────────────────────────
+# Uncomment when SMS provider is configured.
+#
+# def _normalize_phone(phone: str) -> str:
+#     stripped = phone.strip()
+#     digits = re.sub(r'[^\d]', '', stripped)
+#     if stripped.startswith('+'): return '+' + digits
+#     if digits.startswith('00'): return '+' + digits[2:]
+#     if digits.startswith('0') and len(digits) == 10: return '+420' + digits[1:]
+#     if len(digits) == 9: return '+420' + digits
+#     return '+' + digits
+#
+# def _send_sms(to: str, body: str):
+#     from twilio.rest import Client
+#     Client(_TWILIO_SID, _TWILIO_AUTH).messages.create(from_=_TWILIO_FROM, to=to, body=body)
+#
+# def _verify_page(sign_id, partner_id, token, masked_phone, error=''): ...
 
 
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
@@ -244,10 +273,13 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
 
     partner_name = order['partner_id'][1] if order['partner_id'] else 'Neznámý zákazník'
 
-    _p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': ['email', 'phone', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
-    partner_email = _p.get('email') or ''
-    partner_phone = _p.get('phone') or ''
-    _dob_raw      = _p.get('x_studio_datum_narozeni') or ''
+    _p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': ['name', 'email', 'phone', 'street', 'zip', 'city', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
+    partner_email  = _p.get('email') or ''
+    partner_phone  = _p.get('phone') or ''
+    partner_street = _p.get('street') or ''
+    partner_zip    = _p.get('zip') or ''
+    partner_city   = _p.get('city') or ''
+    _dob_raw       = _p.get('x_studio_datum_narozeni') or ''
     try:
         from datetime import date as _date
         _d = _date.fromisoformat(_dob_raw)
@@ -319,12 +351,34 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
     <span class="field-label">Kontakt</span>
     <div style="display:grid;gap:8px;margin-bottom:20px;">
       <div>
-        <label style="font-size:12px;color:#888;">E-mail</label>
+        <label style="font-size:12px;color:#888;">Jméno klienta</label>
+        <input type="text" name="client_name" value="{partner_name}" placeholder="Jméno klienta" required>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#888;">Ulice</label>
+        <input type="text" name="client_street" value="{partner_street}" placeholder="Ulice a číslo popisné">
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr;gap:8px;">
+        <div>
+          <label style="font-size:12px;color:#888;">PSČ</label>
+          <input type="text" name="client_zip" value="{partner_zip}" placeholder="PSČ">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#888;">Město</label>
+          <input type="text" name="client_city" value="{partner_city}" placeholder="Město">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#888;">E-mail (do smlouvy)</label>
         <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta" required>
       </div>
       <div>
+        <label style="font-size:12px;color:#888;">E-mail pro zaslání smlouvy k podpisu</label>
+        <input type="email" name="sign_email" id="sign_email" value="{partner_email}" placeholder="E-mail pro podpis" required onchange="checkSubmit()">
+      </div>
+      <div>
         <label style="font-size:12px;color:#888;">Telefon</label>
-        <input type="tel" name="client_phone" value="{partner_phone}" placeholder="Telefon klienta">
+        <input type="tel" name="client_phone" id="client_phone" value="{partner_phone}" placeholder="Telefon klienta" required onchange="checkSubmit()">
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Datum narození</label>
@@ -753,10 +807,13 @@ function checkSubmit() {{
                + parseFloat(document.getElementById('inp_elig_windows').value || 0);
   const terminDays = document.querySelector('input[name=termin_days]:checked');
   const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
+  const clientPhone = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
+  const phoneOk = /^\d{9,}$/.test(clientPhone);
+  const signEmail = (document.getElementById('sign_email')?.value || '').trim();
   document.getElementById('submitBtn').disabled = !(
     (!hasRoof || (matRoof && qRoof > 0)) &&
     (!hasCeil || (matCeil && qCeil > 0)) &&
-    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays && terminZalohy2
+    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays && terminZalohy2 && phoneOk && signEmail
   );
 }}
 
@@ -799,7 +856,12 @@ def order_form_post(
     termin_dokonceni: str = Form(''),
     termin_zalohy_2: str = Form(None),
     stavebni_pripravenost: str = Form(''),
+    client_name: str = Form(''),
+    client_street: str = Form(''),
+    client_zip: str = Form(''),
+    client_city: str = Form(''),
     client_email: str = Form(''),
+    sign_email: str = Form(''),
     client_phone: str = Form(''),
     client_dob: str = Form(''),
 ):
@@ -982,6 +1044,14 @@ def order_form_post(
         'name', 'street', 'zip', 'city', 'email', 'phone', 'x_studio_datum_narozeni',
     ]})[0]
     patch = {}
+    if client_name:
+        partner['name'] = client_name
+    if client_street:
+        partner['street'] = client_street
+    if client_zip:
+        partner['zip'] = client_zip
+    if client_city:
+        partner['city'] = client_city
     if not partner.get('email') and client_email:
         patch['email'] = client_email
     if not partner.get('phone') and client_phone:
@@ -1013,26 +1083,26 @@ def order_form_post(
         'mimetype': 'application/pdf',
     }])
 
-    # Send for signing
-    client_email = partner.get('email', '')
+    # Send for signing — use sign_email if provided, fall back to contact email
+    effective_sign_email = sign_email.strip() or partner.get('email', '')
     sign_note = ''
-    if client_email:
+    if effective_sign_email:
         try:
             _create_sign_request(call, pdf_bytes, updated['name'],
-                                 partner_id_val, client_email,
+                                 partner_id_val, effective_sign_email,
                                  company_partner_id=_SIGN_TEST_PARTNER_ID,
                                  company_email=_SIGN_TEST_EMAIL)
             call('sale.order', 'write', [[order_id], {'state': 'sent'}])
             call('sale.order', 'message_post', [[order_id]], {
                 'body': (
                     'Smlouva odeslána k podpisu. '
-                    f'Čeká na podpis: {partner.get("name", client_email)} (Objednatel), '
+                    f'Čeká na podpis: {partner.get("name", effective_sign_email)} (Objednatel), '
                     'Lukáš Najman, LUNASTAV CZ s.r.o. (Zhotovitel).'
                 ),
                 'message_type': 'comment',
                 'subtype_xmlid': 'mail.mt_note',
             })
-            sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {client_email}</p>'
+            sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {effective_sign_email}</p>'
         except Exception as exc:
             import html as _html
             sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {_html.escape(str(exc))}</p>'
@@ -1066,6 +1136,13 @@ def order_form_post(
     }}, 3000);
   </script>
 </body></html>"""
+
+# @app.get('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
+# def verify_get(sign_id: int, partner_id: int, token: str): ...
+#
+# @app.post('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
+# async def verify_post(sign_id: int, partner_id: int, token: str, code: str = Form(...)): ...
+
 
 @app.get('/health')
 def health():
