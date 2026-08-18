@@ -1090,8 +1090,8 @@ def order_form_post(
     try:
         _req_id, sign_url = _create_sign_request(call, pdf_bytes, updated['name'],
                              partner_id_val, partner.get('email', ''),
-                             company_partner_id=_SIGN_TEST_PARTNER_ID,
-                             company_email=_SIGN_TEST_EMAIL)
+                             company_partner_id=_SIGN_COMPANY_PARTNER_ID,
+                             company_email=_SIGN_COMPANY_EMAIL)
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
