@@ -94,6 +94,20 @@ def _find_contract_sig_page_and_posY(reader):
 # def _verify_page(sign_id, partner_id, token, masked_phone, error=''): ...
 
 
+def _get_sign_partner_id(call_fn, sign_email: str, fallback_partner_id: int) -> int:
+    """Return a partner_id whose stored email matches sign_email.
+    Odoo Sign sends to partner_id.email, so we need a partner with the right email.
+    Re-uses the existing partner if their email already matches; otherwise finds or creates one."""
+    fp = call_fn('res.partner', 'read', [[fallback_partner_id]], {'fields': ['email', 'name']})[0]
+    if (fp.get('email') or '').strip().lower() == sign_email.strip().lower():
+        return fallback_partner_id
+    found = call_fn('res.partner', 'search_read',
+                    [[('email', '=ilike', sign_email)]], {'fields': ['id'], 'limit': 1})
+    if found:
+        return found[0]['id']
+    return call_fn('res.partner', 'create', [{'name': fp.get('name', ''), 'email': sign_email}])
+
+
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
                          company_partner_id=None, company_email=None):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
@@ -103,6 +117,8 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     # Force Czech language so Odoo generates the completion certificate in Czech
     def call(model, method, args, kw=None):
         return call_fn(model, method, args, {'context': {'lang': 'cs_CZ'}, **(kw or {})})
+    # Odoo Sign sends to partner_id.email — ensure it matches the requested sign email
+    sign_partner_id = _get_sign_partner_id(call_fn, client_email, client_partner_id)
     client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
     company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
 
@@ -165,17 +181,26 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.16,
             }])
 
-    # 5. Create the signing request
+    # 5. Create the signing request — invitation is sent immediately by Odoo during create
     request_id = call('sign.request', 'create', [{
         'template_id': template_id,
         'reference': order_name,
         'subject': f'LUNASTAV - potvrzení SOD {order_name}',
         'send_channel': 'email',
         'request_item_ids': [
-            (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id, 'signer_email': client_email}),
+            (0, 0, {'role_id': client_role_id,  'partner_id': sign_partner_id, 'signer_email': client_email}),
             (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id, 'signer_email': company_email}),
         ],
     }])
+
+    # Invitation already sent; now swap the client item's partner back to the original
+    # so the completion email (signed contract) goes to client_email, not sign_email.
+    if sign_partner_id != client_partner_id:
+        items = call_fn('sign.request.item', 'search_read',
+                        [[('sign_request_id', '=', request_id), ('role_id', '=', client_role_id)]],
+                        {'fields': ['id']})
+        if items:
+            call_fn('sign.request.item', 'write', [[items[0]['id']], {'partner_id': client_partner_id}])
 
     return request_id
 
