@@ -103,9 +103,6 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     # Force Czech language so Odoo generates the completion certificate in Czech
     def call(model, method, args, kw=None):
         return call_fn(model, method, args, {'context': {'lang': 'cs_CZ'}, **(kw or {})})
-    # Both invitation and completion go to partner_id.email — use a partner
-    # whose email matches sign_email so both land at E-mail pro zaslani vyzvy.
-    sign_partner_id = _get_sign_partner_id(call_fn, client_email, client_partner_id)
     client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
     company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
 
@@ -382,10 +379,6 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
       <div>
         <label style="font-size:12px;color:#888;">E-mail klienta</label>
         <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta" required>
-      </div>
-      <div>
-        <label style="font-size:12px;color:#888;">E-mail pro zaslání výzvy k podpisu</label>
-        <input type="email" name="sign_email" id="sign_email" value="{partner_email}" placeholder="E-mail pro podpis" required onchange="checkSubmit()">
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Telefon</label>
@@ -820,11 +813,10 @@ function checkSubmit() {{
   const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
   const clientPhone = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
   const phoneOk = /^\d{{9,}}$/.test(clientPhone);
-  const signEmail = (document.getElementById('sign_email')?.value || '').trim();
   document.getElementById('submitBtn').disabled = !(
     (!hasRoof || (matRoof && qRoof > 0)) &&
     (!hasCeil || (matCeil && qCeil > 0)) &&
-    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays && terminZalohy2 && phoneOk && signEmail
+    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays && terminZalohy2 && phoneOk
   );
 }}
 
@@ -872,7 +864,6 @@ def order_form_post(
     client_zip: str = Form(''),
     client_city: str = Form(''),
     client_email: str = Form(''),
-    sign_email: str = Form(''),
     client_phone: str = Form(''),
     client_dob: str = Form(''),
 ):
@@ -1063,7 +1054,7 @@ def order_form_post(
         partner['zip'] = client_zip
     if client_city:
         partner['city'] = client_city
-    if not partner.get('email') and client_email:
+    if client_email:
         patch['email'] = client_email
     if not partner.get('phone') and client_phone:
         patch['phone'] = client_phone
