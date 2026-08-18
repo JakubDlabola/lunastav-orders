@@ -369,11 +369,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...)):
         </div>
       </div>
       <div>
-        <label style="font-size:12px;color:#888;">E-mail (do smlouvy)</label>
+        <label style="font-size:12px;color:#888;">E-mail klienta</label>
         <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta" required>
       </div>
       <div>
-        <label style="font-size:12px;color:#888;">E-mail pro zaslání smlouvy k podpisu</label>
+        <label style="font-size:12px;color:#888;">E-mail pro zaslání výzvy k podpisu</label>
         <input type="email" name="sign_email" id="sign_email" value="{partner_email}" placeholder="E-mail pro podpis" required onchange="checkSubmit()">
       </div>
       <div>
@@ -808,7 +808,7 @@ function checkSubmit() {{
   const terminDays = document.querySelector('input[name=termin_days]:checked');
   const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
   const clientPhone = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
-  const phoneOk = /^\d{9,}$/.test(clientPhone);
+  const phoneOk = /^\d{{9,}}$/.test(clientPhone);
   const signEmail = (document.getElementById('sign_email')?.value || '').trim();
   document.getElementById('submitBtn').disabled = !(
     (!hasRoof || (matRoof && qRoof > 0)) &&
