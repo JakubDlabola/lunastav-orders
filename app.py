@@ -103,6 +103,9 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     # Force Czech language so Odoo generates the completion certificate in Czech
     def call(model, method, args, kw=None):
         return call_fn(model, method, args, {'context': {'lang': 'cs_CZ'}, **(kw or {})})
+    # Both invitation and completion go to partner_id.email — use a partner
+    # whose email matches sign_email so both land at E-mail pro zaslani vyzvy.
+    sign_partner_id = _get_sign_partner_id(call_fn, client_email, client_partner_id)
     client_role_id  = _get_or_create_role(call_fn, 'Objednatel')
     company_role_id = _get_or_create_role(call_fn, 'Zhotovitel')
 
@@ -165,31 +168,27 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.16,
             }])
 
-    # 5. Create the signing request.
-    # Odoo sends the invitation to partner_id.email and uses the same address for the
-    # completion email. To route the invitation to sign_email while keeping the
-    # completion at client_email (partner's real address), we temporarily swap the
-    # partner's email before create and restore it immediately after.
-    original_email = (call_fn('res.partner', 'read', [[client_partner_id]], {'fields': ['email']})[0].get('email') or '')
-    email_swapped = client_email and client_email.lower() != original_email.lower()
-    if email_swapped:
-        call_fn('res.partner', 'write', [[client_partner_id], {'email': client_email}])
-    try:
-        request_id = call('sign.request', 'create', [{
-            'template_id': template_id,
-            'reference': order_name,
-            'subject': f'LUNASTAV - potvrzení SOD {order_name}',
-            'send_channel': 'email',
-            'request_item_ids': [
-                (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id}),
-                (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id, 'signer_email': company_email}),
-            ],
-        }])
-    finally:
-        if email_swapped:
-            call_fn('res.partner', 'write', [[client_partner_id], {'email': original_email}])
+    # 5. Create the signing request
+    request_id = call('sign.request', 'create', [{
+        'template_id': template_id,
+        'reference': order_name,
+        'subject': f'LUNASTAV - potvrzení SOD {order_name}',
+        'send_channel': 'email',
+        'request_item_ids': [
+            (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id}),
+            (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id}),
+        ],
+    }])
 
-    return request_id
+    # Build the direct client signing URL from the access_token on their item
+    sign_url = None
+    items = call_fn('sign.request.item', 'search_read',
+                    [[('sign_request_id', '=', request_id), ('role_id', '=', client_role_id)]],
+                    {'fields': ['access_token']})
+    if items:
+        sign_url = f'{ODOO_URL}/odoo/sign/{request_id}/{items[0]["access_token"]}'
+
+    return request_id, sign_url
 
 
 def odoo_connect():
@@ -1095,33 +1094,33 @@ def order_form_post(
         'mimetype': 'application/pdf',
     }])
 
-    # Send for signing — use sign_email if provided, fall back to contact email
-    effective_sign_email = sign_email.strip() or partner.get('email', '')
+    sign_url = None
     sign_note = ''
-    if effective_sign_email:
-        try:
-            _create_sign_request(call, pdf_bytes, updated['name'],
-                                 partner_id_val, effective_sign_email,
-                                 company_partner_id=_SIGN_TEST_PARTNER_ID,
-                                 company_email=_SIGN_TEST_EMAIL)
-            call('sale.order', 'write', [[order_id], {'state': 'sent'}])
-            call('sale.order', 'message_post', [[order_id]], {
-                'body': (
-                    'Smlouva odeslána k podpisu. '
-                    f'Čeká na podpis: {partner.get("name", effective_sign_email)} (Objednatel), '
-                    'Lukáš Najman, LUNASTAV CZ s.r.o. (Zhotovitel).'
-                ),
-                'message_type': 'comment',
-                'subtype_xmlid': 'mail.mt_note',
-            })
-            sign_note = f'<p style="color:#2a7;font-size:13px;margin:8px 0 0;">&#10003; Smlouva odeslána k podpisu na {effective_sign_email}</p>'
-        except Exception as exc:
-            import html as _html
-            sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {_html.escape(str(exc))}</p>'
-    else:
-        sign_note = '<p style="color:#c55;font-size:13px;margin:8px 0 0;">Klient nem&#225; e-mail &#8212; &#382;&#225;dost o podpis nebyla odeslána.</p>'
+    try:
+        _req_id, sign_url = _create_sign_request(call, pdf_bytes, updated['name'],
+                             partner_id_val, partner.get('email', ''),
+                             company_partner_id=_SIGN_TEST_PARTNER_ID,
+                             company_email=_SIGN_TEST_EMAIL)
+        call('sale.order', 'write', [[order_id], {'state': 'sent'}])
+        call('sale.order', 'message_post', [[order_id]], {
+            'body': (
+                'Smlouva odeslána k podpisu. '
+                f'Čeká na podpis: {partner.get("name", "")} (Objednatel), '
+                'Lukáš Najman, LUNASTAV CZ s.r.o. (Zhotovitel).'
+            ),
+            'message_type': 'comment',
+            'subtype_xmlid': 'mail.mt_note',
+        })
+    except Exception as exc:
+        import html as _html
+        sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {_html.escape(str(exc))}</p>'
 
     odoo_order_url = f'{ODOO_URL}/odoo/sales/{order_id}'
+    sign_btn = (
+        f'<a href="{sign_url}" target="_blank" '
+        f'style="display:inline-block;margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;'
+        f'text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">Podepsat smlouvu</a>'
+    ) if sign_url else ''
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Objednávka vytvořena</title></head>
@@ -1131,22 +1130,10 @@ def order_form_post(
     <h2 style="margin:0 0 8px;">Objednávka vytvořena</h2>
     <p style="color:#555;font-size:14px;margin:0;">{updated['name']}</p>
     {sign_note}
-    <p style="color:#aaa;font-size:12px;margin:16px 0 0;">Přesměrování zpět do Odoo&hellip;</p>
+    {sign_btn}
+    <p style="margin-top:24px;"><a href="{odoo_order_url}" style="color:#aaa;font-size:13px;">Zpět do Odoo</a></p>
   </div>
-  <script>
-    setTimeout(function() {{
-      try {{
-        if (window.opener) {{
-          window.opener.location.href = '{odoo_order_url}';
-          window.close();
-        }} else {{
-          window.location.href = '{odoo_order_url}';
-        }}
-      }} catch(e) {{
-        window.location.href = '{odoo_order_url}';
-      }}
-    }}, 3000);
-  </script>
+
 </body></html>"""
 
 # @app.get('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
