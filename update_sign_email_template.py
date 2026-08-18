@@ -49,7 +49,8 @@ INVITE_ARCH = """\
     <tr><td valign="top">
         <p>Dobrý den, <t t-out="record.partner_id.name"/>,</p>
         <p>žádáme Vás o podpis smlouvy o dílo č. <strong><t t-out="record.sign_request_id.reference"/></strong>.</p>
-        <p>Pro přístup k dokumentu klikněte na tlačítko níže. Budete požádáni o ověření Vaší totožnosti pomocí SMS kódu zaslaného na Vaše telefonní číslo.</p>
+        <p>Pro přístup k dokumentu klikněte na tlačítko níže.</p>
+        <p style="color:#888;">Pokud jste smlouvu již podepsal(a), nemusíte provádět žádné další kroky.</p>
     </td></tr>
     <tr><td valign="top">
         <div style="margin:16px auto; text-align:center;">
