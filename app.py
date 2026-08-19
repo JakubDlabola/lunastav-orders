@@ -736,8 +736,7 @@ function calc() {{
   const q5100 = hasCeil ? (parseFloat(document.getElementById('qty_5100').value) || 0) : 0;
   const q5101 = hasCeil ? (parseFloat(document.getElementById('qty_5101').value) || 0) : 0;
   const pochoziEff = q5100 + q5101 * 0.625;
-  const pochoziCharged = Math.max(0, pochoziEff - 10);
-  const pochoziPrice = Math.round(pochoziCharged * 750);
+  const pochoziPrice = Math.round(pochoziEff * 750 * 0.88);
   document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice);
   document.getElementById('pv-pochozi-row').classList.toggle('hidden', !hasCeil || (q5100 === 0 && q5101 === 0));
 
@@ -979,9 +978,7 @@ def order_form_post(
     qty_5100_f = float(qty_5100 or 0)
     qty_5101_f = float(qty_5101 or 0)
     pochozi_eff_m2 = (qty_5100_f + qty_5101_f * 0.625) if has_ceiling else 0.0
-    pochozi_charged_m2 = max(0.0, pochozi_eff_m2 - 10)
-    pochozi_total_incl = round(pochozi_charged_m2 * 750)
-    pochozi_unit_per_eff_m2 = (pochozi_charged_m2 * 750 / TAX_RATE / pochozi_eff_m2) if pochozi_eff_m2 > 0 else 0.0
+    pochozi_total_incl = round(pochozi_eff_m2 * 750 * 0.88)
 
     # Extra add-on products (no grant/discount involvement)
     extra_needed = []
@@ -1008,8 +1005,8 @@ def order_form_post(
                 order_lines.append((0, 0, {
                     'product_id': extra_map[code]['id'],
                     'product_uom_qty': qty_f,
-                    'price_unit': round(pochozi_unit_per_eff_m2 * conv, 2),
-                    'discount': 0,
+                    'price_unit': round(750 * conv / TAX_RATE, 2),
+                    'discount': 12,
                 }))
 
     total = eligible_roof + eligible_ceiling + eligible_windows + doprava_price + pochozi_total_incl
