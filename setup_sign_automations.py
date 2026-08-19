@@ -1,8 +1,8 @@
 """
 Create Odoo automations:
-1. sign.completed.document on_write (file field) : upload signed PDF, move order to 'sale', win CRM
-   Odoo writes the signed PDF in a separate UPDATE after the INSERT, so on_write is the right trigger.
-2. sign.request.item state -> completed : post partial-sign chatter on order
+1. sign.completed.document on_write (file field) : upload signed PDF to order/partner/CRM, move order to 'sale', win CRM
+2. ir.attachment on_create (certificate) : copy completion certificate to order/partner/CRM
+3. sign.request.item state -> completed : post partial-sign chatter on order
 """
 import os, xmlrpc.client
 from dotenv import load_dotenv
@@ -21,6 +21,7 @@ def model_id(name):
 sign_comp_doc_mid = model_id('sign.completed.document')
 sign_req_mid      = model_id('sign.request')
 sign_item_mid     = model_id('sign.request.item')
+ir_attachment_mid = model_id('ir.attachment')
 
 # field id for sign.completed.document.file (trigger fires when signed PDF is written)
 file_field_id = call('ir.model.fields', 'search',
@@ -28,7 +29,7 @@ file_field_id = call('ir.model.fields', 'search',
 print(f'sign.completed.document.file field id: {file_field_id}')
 
 # Remove old automations if re-running
-for name in ['LUNASTAV: Smlouva podepsana', 'LUNASTAV: Dilci podpis']:
+for name in ['LUNASTAV: Smlouva podepsana', 'LUNASTAV: Certifikat podpisu', 'LUNASTAV: Dilci podpis']:
     old = call('base.automation', 'search', [[['name', '=', name]]])
     if old:
         call('base.automation', 'unlink', [old])
@@ -97,7 +98,42 @@ auto1 = call('base.automation', 'create', [{
 }])
 print(f'Created automation 1 (on_write sign.completed.document.file): id={auto1}')
 
-# ── Automation 2: sign.request.item state -> completed ─────────────────────
+# ── Automation 2: ir.attachment created with name containing 'certificate' ───
+# Fires when Odoo creates the completion certificate attachment on sign.request,
+# which happens AFTER sign.completed.document.file is written (too late for auto1).
+CODE_CERT = (
+    "if record.res_model == 'sign.request' and record.datas:\n"
+    "    req = env['sign.request'].sudo().browse(record.res_id)\n"
+    "    if req.reference.startswith('P2'):\n"
+    "        order = env['sale.order'].search([('name', '=', req.reference)], limit=1)\n"
+    "        if order:\n"
+    "            for res_model, res_id in [\n"
+    "                ('sale.order',  order.id),\n"
+    "                ('res.partner', order.partner_id.id if order.partner_id else None),\n"
+    "                ('crm.lead',    order.opportunity_id.id if order.opportunity_id else None),\n"
+    "            ]:\n"
+    "                if not res_id:\n"
+    "                    continue\n"
+    "                if not env['ir.attachment'].sudo().search([('res_model', '=', res_model), ('res_id', '=', res_id), ('name', '=', record.name)], limit=1):\n"
+    "                    env['ir.attachment'].sudo().create({'name': record.name, 'res_model': res_model, 'res_id': res_id, 'datas': record.datas, 'mimetype': record.mimetype or 'application/pdf'})\n"
+)
+
+auto2 = call('base.automation', 'create', [{
+    'name': 'LUNASTAV: Certifikat podpisu',
+    'model_id': ir_attachment_mid,
+    'trigger': 'on_create',
+    'filter_domain': "[('res_model', '=', 'sign.request'), ('name', 'ilike', 'certificate')]",
+    'action_server_ids': [(0, 0, {
+        'name': 'LUNASTAV: Certifikat podpisu - code',
+        'model_id': ir_attachment_mid,
+        'state': 'code',
+        'code': CODE_CERT,
+    })],
+    'active': True,
+}])
+print(f'Created automation 2 (on_create ir.attachment certificate): id={auto2}')
+
+# ── Automation 3: sign.request.item state -> completed ─────────────────────
 # trg_selection_field_id=2168 (sign.request.item.state = 'completed')
 # Guard: order.state == 'sent' prevents stale firings.
 CODE_ITEM = (
@@ -121,7 +157,7 @@ CODE_ITEM = (
     "            )\n"
 )
 
-auto2 = call('base.automation', 'create', [{
+auto3 = call('base.automation', 'create', [{
     'name': 'LUNASTAV: Dilci podpis',
     'model_id': sign_item_mid,
     'trigger': 'on_state_set',
@@ -134,5 +170,5 @@ auto2 = call('base.automation', 'create', [{
     })],
     'active': True,
 }])
-print(f'Created automation 2 (partial sign): id={auto2}')
+print(f'Created automation 3 (partial sign): id={auto3}')
 print('Done.')
