@@ -18,13 +18,13 @@ def model_id(name):
     ids = call('ir.model', 'search', [[['model', '=', name]]])
     return ids[0]
 
-sign_comp_doc_mid = model_id('sign.completed.document')
+sign_req_mid      = model_id('sign.request')
 sign_item_mid     = model_id('sign.request.item')
 
-# field id for sign.completed.document.file (used in trigger_field_ids)
-file_field_id = call('ir.model.fields', 'search',
-    [[['model', '=', 'sign.completed.document'], ['name', '=', 'file']]])[0]
-print(f'sign.completed.document.file field id: {file_field_id}')
+# field id for sign.request.state (trigger fires when state is written to 'signed')
+state_field_id = call('ir.model.fields', 'search',
+    [[['model', '=', 'sign.request'], ['name', '=', 'state']]])[0]
+print(f'sign.request.state field id: {state_field_id}')
 
 # Remove old automations if re-running
 for name in ['LUNASTAV: Smlouva podepsana', 'LUNASTAV: Dilci podpis']:
@@ -33,13 +33,12 @@ for name in ['LUNASTAV: Smlouva podepsana', 'LUNASTAV: Dilci podpis']:
         call('base.automation', 'unlink', [old])
         print(f'Removed: {name}')
 
-# ── Automation 1: sign.completed.document file written ────────────────────
-# Odoo performs INSERT (file=False) then UPDATE (file=<bytes>) on the
-# completed document, so we watch the file field write.
-# filter_domain ensures we only process records that now have a file.
-# order.state == 'sent' guard prevents re-processing on any subsequent writes.
+# ── Automation 1: sign.request.state → signed ────────────────────────────────
+# Trigger AFTER state reaches 'signed' so that completed_document_attachment_ids
+# (signed PDF + certificate) are fully populated before we copy them.
+# order.state == 'sent' guard prevents re-processing if the automation fires again.
 CODE_SIGNED = (
-    "req = record.sign_request_id\n"
+    "req = record\n"
     "if req.reference.startswith('P2'):\n"
     "    order = env['sale.order'].search([('name', '=', req.reference)], limit=1)\n"
     "    if order and order.state == 'sent':\n"
@@ -50,11 +49,12 @@ CODE_SIGNED = (
     "            ('crm.lead',    order.opportunity_id.id if order.opportunity_id else None),\n"
     "        ]\n"
     # Signed PDF → order with Podepsano_ prefix (existing naming convention)
-    "        if record.file:\n"
+    "        comp_doc = req.completed_document_ids[:1]\n"
+    "        if comp_doc and comp_doc.file:\n"
     "            signed_fname = 'Podepsano_' + req.reference + '.pdf'\n"
     "            if not env['ir.attachment'].sudo().search([('res_model', '=', 'sale.order'), ('res_id', '=', order.id), ('name', '=', signed_fname)], limit=1):\n"
-    "                env['ir.attachment'].sudo().create({'name': signed_fname, 'res_model': 'sale.order', 'res_id': order.id, 'datas': record.file, 'mimetype': 'application/pdf'})\n"
-    # All individual docs (signed PDF + certificate) → all three targets
+    "                env['ir.attachment'].sudo().create({'name': signed_fname, 'res_model': 'sale.order', 'res_id': order.id, 'datas': comp_doc.file, 'mimetype': 'application/pdf'})\n"
+    # All completed docs (signed PDF + certificate) → all three targets
     "        for att in req.completed_document_attachment_ids:\n"
     "            if not att.datas:\n"
     "                continue\n"
@@ -79,19 +79,19 @@ CODE_SIGNED = (
 
 auto1 = call('base.automation', 'create', [{
     'name': 'LUNASTAV: Smlouva podepsana',
-    'model_id': sign_comp_doc_mid,
+    'model_id': sign_req_mid,
     'trigger': 'on_write',
-    'trigger_field_ids': [(4, file_field_id)],
-    'filter_domain': "[('file', '!=', False)]",
+    'trigger_field_ids': [(4, state_field_id)],
+    'filter_domain': "[('state', '=', 'signed')]",
     'action_server_ids': [(0, 0, {
         'name': 'LUNASTAV: Smlouva podepsana - code',
-        'model_id': sign_comp_doc_mid,
+        'model_id': sign_req_mid,
         'state': 'code',
         'code': CODE_SIGNED,
     })],
     'active': True,
 }])
-print(f'Created automation 1 (on_write file field): id={auto1}')
+print(f'Created automation 1 (on_write sign.request.state=signed): id={auto1}')
 
 # ── Automation 2: sign.request.item state -> completed ─────────────────────
 # trg_selection_field_id=2168 (sign.request.item.state = 'completed')
