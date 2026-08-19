@@ -95,7 +95,7 @@ def _find_contract_sig_page_and_posY(reader):
 
 
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
-                         company_partner_id=None, company_email=None):
+                         company_partner_id=None, company_email=None, salesperson_partner_id=None):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
     company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
     company_email      = company_email      or _SIGN_COMPANY_EMAIL
@@ -176,6 +176,10 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
             (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id}),
         ],
     }])
+
+    # Subscribe the salesperson as a follower so they can see this request with Sign/User access
+    if salesperson_partner_id:
+        call_fn('sign.request', 'message_subscribe', [[request_id], [salesperson_partner_id]])
 
     # Build the direct client signing URL from the access_token on their item
     sign_url = None
@@ -274,7 +278,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     def call(model, method, args, kw={}):
         return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
 
-    orders = call('sale.order', 'read', [[order_id]], {'fields': ['name', 'partner_id', 'opportunity_id']})
+    orders = call('sale.order', 'read', [[order_id]], {'fields': ['name', 'partner_id', 'opportunity_id', 'user_id']})
     if not orders:
         raise HTTPException(status_code=404, detail=f'Objednávka {order_id} nenalezena')
     order = orders[0]
@@ -1085,13 +1089,21 @@ def order_form_post(
         'mimetype': 'application/pdf',
     }])
 
+    # Get salesperson's partner_id so they become a follower on the sign request
+    salesperson_partner_id = None
+    if order.get('user_id'):
+        sp_user = call('res.users', 'read', [[order['user_id'][0]]], {'fields': ['partner_id']})
+        if sp_user:
+            salesperson_partner_id = sp_user[0]['partner_id'][0]
+
     sign_url = None
     sign_note = ''
     try:
         _req_id, sign_url = _create_sign_request(call, pdf_bytes, updated['name'],
                              partner_id_val, partner.get('email', ''),
                              company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
-                             company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL)
+                             company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
+                             salesperson_partner_id=salesperson_partner_id)
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
