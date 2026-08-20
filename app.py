@@ -7,7 +7,6 @@ import re
 import time
 import xmlrpc.client
 
-import segno
 from datetime import date
 
 from dotenv import load_dotenv
@@ -1124,8 +1123,9 @@ def order_form_post(
 
     sign_block = ''
     if sign_url:
+        import segno as _segno
         buf = io.BytesIO()
-        segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
+        _segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
         qr_svg = buf.getvalue().decode('utf-8')
         sign_block = f"""
     <a href="{sign_url}" target="_blank"
