@@ -1039,7 +1039,7 @@ def order_form_post(
     # Generate contract PDF immediately after saving
     updated = call('sale.order', 'read', [[order_id]], {'fields': [
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
-        'x_studio_adresa_realizace', 'x_studio_popis_dila',
+        'x_studio_adresa_realizace', 'x_studio_popis_dila', 'user_id',
         'x_studio_zaloha_kc', 'x_studio_termin_zalohy_2',
         'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
@@ -1092,8 +1092,8 @@ def order_form_post(
 
     # Get salesperson's partner_id so they become a follower on the sign request
     salesperson_partner_id = None
-    if order.get('user_id'):
-        sp_user = call('res.users', 'read', [[order['user_id'][0]]], {'fields': ['partner_id']})
+    if updated.get('user_id'):
+        sp_user = call('res.users', 'read', [[updated['user_id'][0]]], {'fields': ['partner_id']})
         if sp_user:
             salesperson_partner_id = sp_user[0]['partner_id'][0]
 
