@@ -1123,18 +1123,23 @@ def order_form_post(
 
     sign_block = ''
     if sign_url:
-        import segno as _segno
-        buf = io.BytesIO()
-        _segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
-        qr_svg = buf.getvalue().decode('utf-8')
+        qr_html = ''
+        try:
+            import segno as _segno
+            buf = io.BytesIO()
+            _segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
+            qr_svg = buf.getvalue().decode('utf-8')
+            qr_html = f"""<p style="margin-top:28px;color:#888;font-size:13px;">nebo naskenujte QR kód telefonem:</p>
+    <div style="display:inline-block;padding:12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-top:4px;">
+      {qr_svg}
+    </div>"""
+        except Exception:
+            pass
         sign_block = f"""
     <a href="{sign_url}" target="_blank"
        style="display:inline-block;margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;
               text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">Podepsat smlouvu</a>
-    <p style="margin-top:28px;color:#888;font-size:13px;">nebo naskenujte QR kód telefonem:</p>
-    <div style="display:inline-block;padding:12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-top:4px;">
-      {qr_svg}
-    </div>"""
+    {qr_html}"""
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Objednávka vytvořena</title></head>
