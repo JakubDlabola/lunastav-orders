@@ -6,6 +6,8 @@ import random
 import re
 import time
 import xmlrpc.client
+
+import segno
 from datetime import date
 
 from dotenv import load_dotenv
@@ -1119,21 +1121,30 @@ def order_form_post(
         sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {_html.escape(str(exc))}</p>'
 
     odoo_order_url = f'{ODOO_URL}/odoo/sales/{order_id}'
-    sign_btn = (
-        f'<a href="{sign_url}" target="_blank" '
-        f'style="display:inline-block;margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;'
-        f'text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">Podepsat smlouvu</a>'
-    ) if sign_url else ''
+
+    sign_block = ''
+    if sign_url:
+        buf = io.BytesIO()
+        segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
+        qr_svg = buf.getvalue().decode('utf-8')
+        sign_block = f"""
+    <a href="{sign_url}" target="_blank"
+       style="display:inline-block;margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;
+              text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">Podepsat smlouvu</a>
+    <p style="margin-top:28px;color:#888;font-size:13px;">nebo naskenujte QR kód telefonem:</p>
+    <div style="display:inline-block;padding:12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-top:4px;">
+      {qr_svg}
+    </div>"""
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Objednávka vytvořena</title></head>
 <body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
-  <div style="background:#fff;border-radius:8px;padding:40px;max-width:480px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+  <div style="background:#fff;border-radius:8px;padding:40px;max-width:520px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
     <div style="font-size:56px;margin-bottom:12px;">&#10003;</div>
     <h2 style="margin:0 0 8px;">Objednávka vytvořena</h2>
     <p style="color:#555;font-size:14px;margin:0;">{updated['name']}</p>
     {sign_note}
-    {sign_btn}
+    {sign_block}
     <p style="margin-top:24px;"><a href="{odoo_order_url}" style="color:#aaa;font-size:13px;">Zpět do Odoo</a></p>
   </div>
 
