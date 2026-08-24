@@ -250,9 +250,8 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     LISTED_PRICES = {
         '3000A': 2002, '3100A': 2002, '3200A': 2002,
         '3000B': 751,  '3100B': 751,  '3200B': 751,
-        '4001A': 1000, '4001B': 1000,
     }
-    WIN_CODES = {'4000A', '4000B', '4000C'}
+    WIN_CODES = {'4000A', '4000B', '4000C', '4001A', '4001B'}
     insul_codes = {'3000A', '3100A', '3200A', '3000B', '3100B', '3200B'}
     has_windows = False
     insul_area = 0.0

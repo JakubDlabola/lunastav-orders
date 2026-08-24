@@ -1078,8 +1078,8 @@ def order_form_post(
                 order_lines.append((0, 0, {
                     'product_id': bp[0]['id'],
                     'product_uom_qty': qty_blinds_f,
-                    'price_unit': round(1000 / TAX_RATE, 2),
-                    'discount': 0,
+                    'price_unit': round(1000 / (1 - COSMETIC_DISC / 100) / TAX_RATE, 2),
+                    'discount': COSMETIC_DISC,
                 }))
         if qty_nets_f > 0:
             np_ = call('product.product', 'search_read',
@@ -1088,8 +1088,8 @@ def order_form_post(
                 order_lines.append((0, 0, {
                     'product_id': np_[0]['id'],
                     'product_uom_qty': qty_nets_f,
-                    'price_unit': round(1000 / TAX_RATE, 2),
-                    'discount': 0,
+                    'price_unit': round(1000 / (1 - COSMETIC_DISC / 100) / TAX_RATE, 2),
+                    'discount': COSMETIC_DISC,
                 }))
 
     if doprava_prods:
