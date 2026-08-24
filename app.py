@@ -335,6 +335,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     .preview {{ background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 16px 20px; margin-top: 20px; font-size: 14px; }}
     .preview-row {{ display: flex; justify-content: space-between; margin-bottom: 6px; }}
     .preview-row.grant {{ color: #2a7a3e; font-weight: 500; }}
+    .preview-row.sub {{ font-size: 13px; color: #666; padding-left: 14px; margin-bottom: 2px; }}
     .preview-row.total {{ font-weight: bold; font-size: 15px; border-top: 1px solid #ddd; padding-top: 10px; margin-top: 6px; margin-bottom: 0; }}
     .split-note {{ font-size: 12px; color: #888; margin-top: 6px; }}
     button[type=submit] {{ width: 100%; margin-top: 28px; padding: 13px; font-size: 15px; background: #c8a840; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }}
@@ -493,14 +494,13 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
+      <div class="preview-row sub hidden" id="pv-windows-row"><span>z toho okna celkem</span><span id="pv-windows">—</span></div>
       <div class="preview-row hidden" id="pv-rate-roof-row"><span>Efektivní cena / m² — Střecha</span><span id="pv-rate-roof">—</span></div>
       <div class="preview-row hidden" id="pv-rate-ceil-row"><span>Efektivní cena / m² — Strop</span><span id="pv-rate-ceil">—</span></div>
       <div class="preview-row hidden" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
       <div class="preview-row hidden" id="pv-pochozi-row"><span>Pochozí plocha / lávka</span><span id="pv-pochozi">—</span></div>
-      <div class="preview-row hidden" id="pv-blinds-row"><span>Žaluzie</span><span id="pv-blinds">—</span></div>
-      <div class="preview-row hidden" id="pv-nets-row"><span>Síť proti hmyzu</span><span id="pv-nets">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
       <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
       <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
@@ -796,13 +796,10 @@ function calc() {{
   document.getElementById('pv-disc').textContent = dTotal.toFixed(1) + ' %';
   document.getElementById('pv-disc-row').classList.toggle('hidden', dTotal < 0.5);
 
-  document.getElementById('pv-blinds').textContent = fmt(blindsCost);
-  document.getElementById('pv-blinds-row').classList.toggle('hidden', blindsCost === 0);
-  document.getElementById('pv-nets').textContent = fmt(netsCost);
-  document.getElementById('pv-nets-row').classList.toggle('hidden', netsCost === 0);
-
   const grantOn = hasGrant();
-  document.getElementById('pv-base').textContent  = fmt(lTotal);
+  document.getElementById('pv-base').textContent  = fmt(lTotal + blindsCost + netsCost);
+  document.getElementById('pv-windows').textContent = fmt(lWin);
+  document.getElementById('pv-windows-row').classList.toggle('hidden', !hasWin || lWin === 0);
   document.getElementById('pv-total').textContent = fmt(grandTotal);
   document.getElementById('pv-grant-row').classList.toggle('hidden', !grantOn);
   document.getElementById('pv-client-row').classList.toggle('hidden', !grantOn);
