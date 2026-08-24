@@ -330,7 +330,10 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     .opt-btn {{ display: inline-block; padding: 8px 18px; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 14px; transition: border-color .15s, background .15s; user-select: none; }}
     .opt-wrap input[type=radio]:checked ~ .opt-btn, .opt-wrap input[type=checkbox]:checked ~ .opt-btn {{ border-color: #c8a840; background: #fdf8ea; }}
     .opt-btn:hover {{ border-color: #c8a840; }}
-    .type-section {{ border-left: 3px solid #c8a840; padding-left: 14px; margin-top: 16px; }}
+    .type-section {{ padding-left: 14px; margin-top: 16px; border-left: 4px solid #c8a840; border-radius: 0 6px 6px 0; padding: 12px 14px; }}
+    #roof-section    {{ border-left-color: #c8673a; background: rgba(200, 103, 58, 0.06); }}
+    #ceiling-section {{ border-left-color: #3a7fc8; background: rgba(58, 127, 200, 0.06); }}
+    #windows-section {{ border-left-color: #3aaa6e; background: rgba(58, 170, 110, 0.06); }}
     input[type=number] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
     .preview {{ background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 16px 20px; margin-top: 20px; font-size: 14px; }}
     .preview-row {{ display: flex; justify-content: space-between; margin-bottom: 6px; }}
@@ -468,7 +471,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
       <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
         <input type="checkbox" name="has_blinds" id="chk_blinds" value="1"
                onchange="onBlindsNetsChange('blinds')"
-               style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+               style="width:18px;height:18px;cursor:pointer;accent-color:#3aaa6e;">
         <label for="chk_blinds" style="font-size:14px;cursor:pointer;">Žaluzie — 1 000 Kč / m²</label>
       </div>
       <div id="blinds-qty-section" class="hidden" style="margin-top:6px;">
@@ -479,7 +482,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
       <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
         <input type="checkbox" name="has_nets" id="chk_nets" value="1"
                onchange="onBlindsNetsChange('nets')"
-               style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+               style="width:18px;height:18px;cursor:pointer;accent-color:#3aaa6e;">
         <label for="chk_nets" style="font-size:14px;cursor:pointer;">Síť proti hmyzu — 1 000 Kč / m²</label>
       </div>
       <div id="nets-qty-section" class="hidden" style="margin-top:6px;">
