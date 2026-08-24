@@ -1054,18 +1054,19 @@ def order_form_post(
                          [[['default_code', 'in', ['4000A', '4000B', '4000C']]]],
                          {'fields': ['id', 'default_code'], 'limit': 3})
         win_map = {p['default_code']: p for p in win_prods}
-        for code, qty_str, elig in [
-            ('4000A', qty_win_a, eligible_win_a),
-            ('4000B', qty_win_b, eligible_win_b),
-            ('4000C', qty_win_c, eligible_win_c),
+        WIN_LISTED = {'4000A': 9000, '4000B': 9900, '4000C': 10800}
+        for code, qty_str in [
+            ('4000A', qty_win_a),
+            ('4000B', qty_win_b),
+            ('4000C', qty_win_c),
         ]:
             qty = float(qty_str or 0)
             if qty > 0 and code in win_map:
-                unit_price_incl = (elig / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
+                listed_rate = WIN_LISTED[code]
                 order_lines.append((0, 0, {
                     'product_id': win_map[code]['id'],
                     'product_uom_qty': qty,
-                    'price_unit': round(unit_price_incl / TAX_RATE, 2),
+                    'price_unit': round(listed_rate / (1 - COSMETIC_DISC / 100) / TAX_RATE, 2),
                     'discount': COSMETIC_DISC,
                 }))
         qty_blinds_f = float(qty_blinds or 0) if has_blinds else 0.0

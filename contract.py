@@ -250,7 +250,8 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     LISTED_PRICES = {
         '3000A': 2002, '3100A': 2002, '3200A': 2002,
         '3000B': 751,  '3100B': 751,  '3200B': 751,
-        '4000': 8000,
+        '4000A': 9000, '4000B': 9900, '4000C': 10800,
+        '4001A': 1000, '4001B': 1000,
     }
     insul_codes = {'3000A', '3100A', '3200A', '3000B', '3100B', '3200B'}
     has_windows = False
@@ -262,7 +263,7 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
             continue
         code = re.sub(r'^\[(.+?)\].*', r'\1', ln['product_id'][1]) if isinstance(ln.get('product_id'), list) else ''
         qty = ln.get('product_uom_qty') or 0
-        if code == '4000':
+        if code.startswith('4000'):
             has_windows = True
         if code in insul_codes:
             insul_area += qty
