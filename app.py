@@ -798,7 +798,7 @@ function calc() {{
 
   const grantOn = hasGrant();
   document.getElementById('pv-base').textContent  = fmt(lTotal + blindsCost + netsCost);
-  document.getElementById('pv-windows').textContent = fmt(lWin);
+  document.getElementById('pv-windows').textContent = fmt(lWin + blindsCost + netsCost);
   document.getElementById('pv-windows-row').classList.toggle('hidden', !hasWin || lWin === 0);
   document.getElementById('pv-total').textContent = fmt(grandTotal);
   document.getElementById('pv-grant-row').classList.toggle('hidden', !grantOn);
