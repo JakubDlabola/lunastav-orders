@@ -357,10 +357,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     <input type="hidden" name="test" value="{test}">
     <input type="hidden" name="eligible_roof"        id="inp_elig_roof"    value="0">
     <input type="hidden" name="eligible_ceiling"     id="inp_elig_ceiling" value="0">
-    <input type="hidden" name="eligible_windows"     id="inp_elig_windows" value="0">
+    <input type="hidden" name="eligible_win_a"       id="inp_elig_win_a"   value="0">
+    <input type="hidden" name="eligible_win_b"       id="inp_elig_win_b"   value="0">
+    <input type="hidden" name="eligible_win_c"       id="inp_elig_win_c"   value="0">
     <input type="hidden" name="discount_pct_roof"    id="inp_disc_roof"    value="0">
     <input type="hidden" name="discount_pct_ceiling" id="inp_disc_ceiling" value="0">
-    <input type="hidden" name="discount_pct_windows" id="inp_disc_windows" value="0">
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
 
     <span class="field-label">Kontakt</span>
@@ -457,8 +458,34 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     </div>
 
     <div id="windows-section" class="hidden type-section">
-      <span class="field-label">Počet oken</span>
-      <input type="number" name="qty_windows" id="qty_windows" value="1" min="1" step="1" oninput="calc()">
+      <span class="field-label">Okno, nebarvené — 9 000 Kč / m²</span>
+      <input type="number" name="qty_win_a" id="qty_win_a" min="0" step="0.1" placeholder="0 m²" oninput="onWinQtyChange()">
+      <span class="field-label">Okno, jednostranná barva — 9 900 Kč / m²</span>
+      <input type="number" name="qty_win_b" id="qty_win_b" min="0" step="0.1" placeholder="0 m²" oninput="onWinQtyChange()">
+      <span class="field-label">Okno, oboustranná barva — 10 800 Kč / m²</span>
+      <input type="number" name="qty_win_c" id="qty_win_c" min="0" step="0.1" placeholder="0 m²" oninput="onWinQtyChange()">
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" name="has_blinds" id="chk_blinds" value="1"
+               onchange="onBlindsNetsChange('blinds')"
+               style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+        <label for="chk_blinds" style="font-size:14px;cursor:pointer;">Žaluzie — 1 000 Kč / m²</label>
+      </div>
+      <div id="blinds-qty-section" class="hidden" style="margin-top:6px;">
+        <span class="field-label">Žaluzie (m²)</span>
+        <input type="number" name="qty_blinds" id="qty_blinds" min="0" step="0.1" placeholder="0 m²"
+               oninput="document.getElementById('qty_blinds').dataset.userSet='1'; calc()">
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" name="has_nets" id="chk_nets" value="1"
+               onchange="onBlindsNetsChange('nets')"
+               style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+        <label for="chk_nets" style="font-size:14px;cursor:pointer;">Síť proti hmyzu — 1 000 Kč / m²</label>
+      </div>
+      <div id="nets-qty-section" class="hidden" style="margin-top:6px;">
+        <span class="field-label">Síť proti hmyzu (m²)</span>
+        <input type="number" name="qty_nets" id="qty_nets" min="0" step="0.1" placeholder="0 m²"
+               oninput="document.getElementById('qty_nets').dataset.userSet='1'; calc()">
+      </div>
     </div>
 
     <span class="field-label">Zbývající dotace (Kč)</span>
@@ -472,6 +499,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
       <div class="preview-row hidden" id="pv-pochozi-row"><span>Pochozí plocha / lávka</span><span id="pv-pochozi">—</span></div>
+      <div class="preview-row hidden" id="pv-blinds-row"><span>Žaluzie</span><span id="pv-blinds">—</span></div>
+      <div class="preview-row hidden" id="pv-nets-row"><span>Síť proti hmyzu</span><span id="pv-nets">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
       <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
       <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
@@ -529,7 +558,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 </div>
 <script>
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
-const LISTED    = {{roof: 2002, ceiling: 751, windows: 8000}};
+const LISTED    = {{roof: 2002, ceiling: 751}};
+const WIN_RATES = {{a: 9000, b: 9900, c: 10800}};
 
 const _STRIKANA_TEXT = 'Stavebn\u00ed prostor bude kv\u016fli zamezen\u00ed pr\u016fvanu uzav\u0159en a vytopen minim\u00e1ln\u011b na teplotu 17\u00b0C. M\u00edsta uvnit\u0159 stavebn\u00edho prostoru, jen\u017e nesm\u00ed b\u00fdt zne\u010di\u0161t\u011bna aplika\u010dn\u00ed chemi\u00ed, budou objednatelem zakryta, v p\u0159\u00edpad\u011b venkovn\u00ed aplikace objednatel proti p\u0159\u00edpadn\u00e9mu zne\u010di\u0161t\u011bn\u00ed zaji\u0161t\u00ed okol\u00ed v dosahu cca 100 m. Objednatel zaji\u0161t\u00ed, aby okolo kom\u00ednov\u00e9ho t\u011blesa byla neho\u0159lav\u00e1 vrstva v minim\u00e1ln\u00ed tlou\u0161\u0165ce 50 mm. S\u00e1drokartonov\u00e9 ro\u0161ty mus\u00ed b\u00fdt s ohledem na rezervu pro b\u011b\u017enou toleranci tlou\u0161\u0165ky PUR p\u011bny nav\u00fd\u0161eny o 3 cm. Objednatel mus\u00ed b\u011bhem pr\u016fb\u011bhu aplikace izolace zamezit vstupu nepovolan\u00fdch do stavebn\u00edch prostor\u016f.';
 const _BASE_STAVEBNI = 'Stavební připravenost spočívá především ve vyklizení místa realizace.';
@@ -689,26 +719,37 @@ function calc() {{
 
   const qRoof = hasRoof ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 0;
   const qCeil = hasCeil ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 0;
-  const qWin  = hasWin  ? (parseFloat(document.getElementById('qty_windows').value)    || 0) : 0;
+  const qWinA = hasWin  ? (parseFloat(document.getElementById('qty_win_a').value)      || 0) : 0;
+  const qWinB = hasWin  ? (parseFloat(document.getElementById('qty_win_b').value)      || 0) : 0;
+  const qWinC = hasWin  ? (parseFloat(document.getElementById('qty_win_c').value)      || 0) : 0;
+  const qWinTot = qWinA + qWinB + qWinC;
 
-  const lRoof = LISTED.roof * qRoof, lCeil = LISTED.ceiling * qCeil, lWin = LISTED.windows * qWin;
+  const lRoof = LISTED.roof * qRoof, lCeil = LISTED.ceiling * qCeil;
+  const lWinA = WIN_RATES.a * qWinA, lWinB = WIN_RATES.b * qWinB, lWinC = WIN_RATES.c * qWinC;
+  const lWin = lWinA + lWinB + lWinC;
   const lTotal = lRoof + lCeil + lWin;
   if (lTotal === 0) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
-  const fRoof = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWin;
+  const fRoof = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWinTot;
   const fTot = fRoof + fCeil + fWin;
 
+  const hasBlinds = hasWin && document.getElementById('chk_blinds').checked;
+  const hasNets   = hasWin && document.getElementById('chk_nets').checked;
+  const qBlinds   = hasBlinds ? (parseFloat(document.getElementById('qty_blinds').value) || 0) : 0;
+  const qNets     = hasNets   ? (parseFloat(document.getElementById('qty_nets').value)   || 0) : 0;
+  const blindsCost = Math.round(1000 * qBlinds);
+  const netsCost   = Math.round(1000 * qNets);
+
   const DOPRAVA = 250;
-  let eRoof = 0, eCeil = 0, eWin = 0, grantReceived = 0, floorHit = false, roofFloorHit = false, ceilFloorHit = false;
+  let eRoof = 0, eCeil = 0, grantReceived = 0, floorHit = false, roofFloorHit = false, ceilFloorHit = false;
   if (!hasGrant()) {{
     eRoof = hasRoof ? Math.round(roofMinRate(qRoof) * qRoof) : 0;
     eCeil = hasCeil ? Math.round(ceilMinRate(qCeil) * qCeil) : 0;
-    eWin  = hasWin  ? GRANT_RATE.windows * qWin  : 0;
     grantReceived = 0;
   }} else {{
     const remK = getRemK();
     grantReceived = remK !== null ? Math.min(fTot, remK) : fTot;
-    if (fTot > 0) {{ eRoof = grantReceived * fRoof / fTot; eCeil = grantReceived * fCeil / fTot; eWin = grantReceived * fWin / fTot; }}
+    if (fTot > 0) {{ eRoof = grantReceived * fRoof / fTot; eCeil = grantReceived * fCeil / fTot; }}
     if (hasRoof && qRoof > 0) {{
       const minR = Math.round(roofMinRate(qRoof) * qRoof);
       if (eRoof < minR) {{ eRoof = minR; floorHit = true; roofFloorHit = true; }}
@@ -720,22 +761,27 @@ function calc() {{
     const ceilFloor = hasCeil && qCeil > 0 ? Math.round(ceilMinRate(qCeil) * qCeil) : 0;
     eRoof = Math.min(eRoof, lRoof);
     eCeil = Math.min(eCeil, Math.max(lCeil, ceilFloor));
-    eWin  = Math.min(eWin,  lWin);
   }}
 
+  // eWin = listed price always; grant reduces clientPays directly via grantReceived
+  const eWin = lWin;
   const eTotal = eRoof + eCeil + eWin;
   const grantUsed = Math.min(grantReceived, eTotal);
   const clientPays = Math.max(DOPRAVA, eTotal + DOPRAVA - grantReceived);
-  const dRoof  = lRoof  > 0 ? Math.max(0, (1 - eRoof / lRoof))  * 100 : 0;
-  const dCeil  = lCeil  > 0 ? Math.max(0, (1 - eCeil / lCeil))  * 100 : 0;
-  const dWin   = lWin   > 0 ? Math.max(0, (1 - eWin  / lWin))   * 100 : 0;
+  const dRoof  = lRoof > 0 ? Math.max(0, (1 - eRoof / lRoof)) * 100 : 0;
+  const dCeil  = lCeil > 0 ? Math.max(0, (1 - eCeil / lCeil)) * 100 : 0;
 
+  // Per-type grant per m² for windows (uniform across all m²)
+  const grantPerM2Win = (hasGrant() && fTot > 0 && qWinTot > 0)
+    ? grantReceived * fWin / (fTot * qWinTot)
+    : 0;
   document.getElementById('inp_elig_roof').value    = Math.round(eRoof);
   document.getElementById('inp_elig_ceiling').value = Math.round(eCeil);
-  document.getElementById('inp_elig_windows').value = Math.round(eWin);
+  document.getElementById('inp_elig_win_a').value   = Math.max(0, Math.round((WIN_RATES.a - grantPerM2Win) * qWinA));
+  document.getElementById('inp_elig_win_b').value   = Math.max(0, Math.round((WIN_RATES.b - grantPerM2Win) * qWinB));
+  document.getElementById('inp_elig_win_c').value   = Math.max(0, Math.round((WIN_RATES.c - grantPerM2Win) * qWinC));
   document.getElementById('inp_disc_roof').value    = dRoof.toFixed(4);
   document.getElementById('inp_disc_ceiling').value = dCeil.toFixed(4);
-  document.getElementById('inp_disc_windows').value = dWin.toFixed(4);
   document.getElementById('inp_grant_amount').value = Math.round(grantUsed);
 
   const q5100 = hasCeil ? (parseFloat(document.getElementById('qty_5100').value) || 0) : 0;
@@ -745,10 +791,15 @@ function calc() {{
   document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice);
   document.getElementById('pv-pochozi-row').classList.toggle('hidden', !hasCeil || (q5100 === 0 && q5101 === 0));
 
-  const grandTotal = eTotal + DOPRAVA + pochoziPrice;
+  const grandTotal = eTotal + DOPRAVA + pochoziPrice + blindsCost + netsCost;
   const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
   document.getElementById('pv-disc').textContent = dTotal.toFixed(1) + ' %';
   document.getElementById('pv-disc-row').classList.toggle('hidden', dTotal < 0.5);
+
+  document.getElementById('pv-blinds').textContent = fmt(blindsCost);
+  document.getElementById('pv-blinds-row').classList.toggle('hidden', blindsCost === 0);
+  document.getElementById('pv-nets').textContent = fmt(netsCost);
+  document.getElementById('pv-nets-row').classList.toggle('hidden', netsCost === 0);
 
   const grantOn = hasGrant();
   document.getElementById('pv-base').textContent  = fmt(lTotal);
@@ -757,7 +808,7 @@ function calc() {{
   document.getElementById('pv-client-row').classList.toggle('hidden', !grantOn);
   if (grantOn) {{
     document.getElementById('pv-grant').textContent  = fmt(grantReceived);
-    document.getElementById('pv-client').textContent = fmt(clientPays + pochoziPrice);
+    document.getElementById('pv-client').textContent = fmt(clientPays + pochoziPrice + blindsCost + netsCost);
   }}
 
   if (hasRoof && qRoof > 0) {{
@@ -783,12 +834,13 @@ function calc() {{
 
   const winOnly  = hasWin && !hasRoof && !hasCeil;
   const splitVal = winOnly ? '80-20' : (getSplit() || '');
+  const splitBase = grandTotal;
   if (splitVal) {{
     const [a, b] = splitVal.split('-').map(Number);
     document.getElementById('pv-zaloha-label').textContent   = 'Z\u00e1loha (' + a + ' %)';
     document.getElementById('pv-doplatek-label').textContent = 'Doplatek (' + b + ' %)';
-    document.getElementById('pv-zaloha').textContent         = fmt(Math.round(grandTotal * a / 100));
-    document.getElementById('pv-doplatek').textContent       = fmt(Math.round(grandTotal * b / 100));
+    document.getElementById('pv-zaloha').textContent         = fmt(Math.round(splitBase * a / 100));
+    document.getElementById('pv-doplatek').textContent       = fmt(Math.round(splitBase * b / 100));
     document.getElementById('pv-zaloha-row').classList.remove('hidden');
     document.getElementById('pv-doplatek-row').classList.remove('hidden');
   }} else {{
@@ -809,12 +861,17 @@ function checkSubmit() {{
   const matCeil = hasCeil ? document.querySelector('input[name=material_ceiling]:checked')?.value : 'ok';
   const qRoof = hasRoof ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 1;
   const qCeil = hasCeil ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 1;
-  const qWin  = hasWin  ? (parseFloat(document.getElementById('qty_windows').value)    || 0) : 1;
+  const qWinA = hasWin  ? (parseFloat(document.getElementById('qty_win_a').value) || 0) : 0;
+  const qWinB = hasWin  ? (parseFloat(document.getElementById('qty_win_b').value) || 0) : 0;
+  const qWinC = hasWin  ? (parseFloat(document.getElementById('qty_win_c').value) || 0) : 0;
+  const qWinTot = qWinA + qWinB + qWinC;
   const winOnly = hasWin && !hasRoof && !hasCeil;
   const split = winOnly ? '80-20' : getSplit();
   const eTotal = parseFloat(document.getElementById('inp_elig_roof').value    || 0)
                + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
-               + parseFloat(document.getElementById('inp_elig_windows').value || 0);
+               + parseFloat(document.getElementById('inp_elig_win_a').value   || 0)
+               + parseFloat(document.getElementById('inp_elig_win_b').value   || 0)
+               + parseFloat(document.getElementById('inp_elig_win_c').value   || 0);
   const terminDays = document.querySelector('input[name=termin_days]:checked');
   const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
   const clientPhone = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
@@ -822,8 +879,36 @@ function checkSubmit() {{
   document.getElementById('submitBtn').disabled = !(
     (!hasRoof || (matRoof && qRoof > 0)) &&
     (!hasCeil || (matCeil && qCeil > 0)) &&
-    (!hasWin  || qWin > 0) && split && eTotal > 0 && terminDays && terminZalohy2 && phoneOk
+    (!hasWin  || qWinTot > 0) && split && eTotal > 0 && terminDays && terminZalohy2 && phoneOk
   );
+}}
+
+function winTotalM2() {{
+  return (parseFloat(document.getElementById('qty_win_a').value) || 0)
+       + (parseFloat(document.getElementById('qty_win_b').value) || 0)
+       + (parseFloat(document.getElementById('qty_win_c').value) || 0);
+}}
+
+function onWinQtyChange() {{
+  const tot = winTotalM2();
+  ['qty_blinds', 'qty_nets'].forEach(function(id) {{
+    const el = document.getElementById(id);
+    if (!el.dataset.userSet) el.value = tot || '';
+  }});
+  calc();
+}}
+
+function onBlindsNetsChange(which) {{
+  const chkId   = which === 'blinds' ? 'chk_blinds'   : 'chk_nets';
+  const secId   = which === 'blinds' ? 'blinds-qty-section' : 'nets-qty-section';
+  const qtyId   = which === 'blinds' ? 'qty_blinds'   : 'qty_nets';
+  const checked = document.getElementById(chkId).checked;
+  document.getElementById(secId).classList.toggle('hidden', !checked);
+  if (checked) {{
+    const el = document.getElementById(qtyId);
+    if (!el.dataset.userSet) el.value = winTotalM2() || '';
+  }}
+  calc();
 }}
 
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
@@ -844,13 +929,20 @@ def order_form_post(
     material_ceiling: str = Form(None),
     qty_m2_roof: str = Form(''),
     qty_m2_ceiling: str = Form(''),
-    qty_windows: str = Form(''),
+    qty_win_a: str = Form(''),
+    qty_win_b: str = Form(''),
+    qty_win_c: str = Form(''),
+    has_blinds: str = Form(''),
+    qty_blinds: str = Form(''),
+    has_nets: str = Form(''),
+    qty_nets: str = Form(''),
     eligible_roof: float = Form(0),
     eligible_ceiling: float = Form(0),
-    eligible_windows: float = Form(0),
+    eligible_win_a: float = Form(0),
+    eligible_win_b: float = Form(0),
+    eligible_win_c: float = Form(0),
     discount_pct_roof: float = Form(0),
     discount_pct_ceiling: float = Form(0),
-    discount_pct_windows: float = Form(0),
     grant_amount: float = Form(0),
     split: str = Form(None),
     extra_5000a: str = Form(''),
@@ -958,18 +1050,46 @@ def order_form_post(
         }))
 
     if has_windows:
-        qty = float(qty_windows or 0)
-        prods = call('product.product', 'search_read',
-                     [[['default_code', '=', '4000']]], {'fields': ['id'], 'limit': 1})
-        if not prods:
-            raise HTTPException(status_code=400, detail='Produkt [4000] nenalezen v Odoo')
-        unit_price_incl = (eligible_windows / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
-        order_lines.append((0, 0, {
-            'product_id': prods[0]['id'],
-            'product_uom_qty': qty,
-            'price_unit': round(unit_price_incl / TAX_RATE, 2),
-            'discount': COSMETIC_DISC,
-        }))
+        win_prods = call('product.product', 'search_read',
+                         [[['default_code', 'in', ['4000A', '4000B', '4000C']]]],
+                         {'fields': ['id', 'default_code'], 'limit': 3})
+        win_map = {p['default_code']: p for p in win_prods}
+        for code, qty_str, elig in [
+            ('4000A', qty_win_a, eligible_win_a),
+            ('4000B', qty_win_b, eligible_win_b),
+            ('4000C', qty_win_c, eligible_win_c),
+        ]:
+            qty = float(qty_str or 0)
+            if qty > 0 and code in win_map:
+                unit_price_incl = (elig / qty) / (1 - COSMETIC_DISC / 100) if qty else 0
+                order_lines.append((0, 0, {
+                    'product_id': win_map[code]['id'],
+                    'product_uom_qty': qty,
+                    'price_unit': round(unit_price_incl / TAX_RATE, 2),
+                    'discount': COSMETIC_DISC,
+                }))
+        qty_blinds_f = float(qty_blinds or 0) if has_blinds else 0.0
+        qty_nets_f   = float(qty_nets   or 0) if has_nets   else 0.0
+        if qty_blinds_f > 0:
+            bp = call('product.product', 'search_read',
+                      [[['default_code', '=', '4001A']]], {'fields': ['id'], 'limit': 1})
+            if bp:
+                order_lines.append((0, 0, {
+                    'product_id': bp[0]['id'],
+                    'product_uom_qty': qty_blinds_f,
+                    'price_unit': round(1000 / TAX_RATE, 2),
+                    'discount': 0,
+                }))
+        if qty_nets_f > 0:
+            np_ = call('product.product', 'search_read',
+                       [[['default_code', '=', '4001B']]], {'fields': ['id'], 'limit': 1})
+            if np_:
+                order_lines.append((0, 0, {
+                    'product_id': np_[0]['id'],
+                    'product_uom_qty': qty_nets_f,
+                    'price_unit': round(1000 / TAX_RATE, 2),
+                    'discount': 0,
+                }))
 
     if doprava_prods:
         order_lines.append((0, 0, {
@@ -1014,7 +1134,9 @@ def order_form_post(
                     'discount': 12,
                 }))
 
-    total = eligible_roof + eligible_ceiling + eligible_windows + doprava_price + pochozi_total_incl
+    blinds_cost = round(1000 * (float(qty_blinds or 0) if has_blinds else 0.0))
+    nets_cost   = round(1000 * (float(qty_nets   or 0) if has_nets   else 0.0))
+    total = eligible_roof + eligible_ceiling + eligible_win_a + eligible_win_b + eligible_win_c + blinds_cost + nets_cost + doprava_price + pochozi_total_incl
     zaloha   = round(total * split_pct[0] / 100)
     doplatek = round(total * split_pct[1] / 100)
     client_pays = round(total - grant_amount)
