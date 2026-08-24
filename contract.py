@@ -250,9 +250,9 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     LISTED_PRICES = {
         '3000A': 2002, '3100A': 2002, '3200A': 2002,
         '3000B': 751,  '3100B': 751,  '3200B': 751,
-        '4000A': 9000, '4000B': 9900, '4000C': 10800,
         '4001A': 1000, '4001B': 1000,
     }
+    WIN_CODES = {'4000A', '4000B', '4000C'}
     insul_codes = {'3000A', '3100A', '3200A', '3000B', '3100B', '3200B'}
     has_windows = False
     insul_area = 0.0
@@ -263,11 +263,14 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
             continue
         code = re.sub(r'^\[(.+?)\].*', r'\1', ln['product_id'][1]) if isinstance(ln.get('product_id'), list) else ''
         qty = ln.get('product_uom_qty') or 0
-        if code.startswith('4000'):
+        if code in WIN_CODES:
             has_windows = True
-        if code in insul_codes:
+            # price_unit already carries cosmetic markup; multiply by qty to get pre-discount excl. total
+            real_listed_excl += (ln.get('price_unit') or 0) * qty
+        elif code in insul_codes:
             insul_area += qty
-        if code in LISTED_PRICES:
+            real_listed_excl += LISTED_PRICES[code] * qty / TAX
+        elif code in LISTED_PRICES:
             real_listed_excl += LISTED_PRICES[code] * qty / TAX
         elif code == 'D':
             doprava_subtotal += ln.get('price_subtotal') or 0
