@@ -972,6 +972,64 @@ def order_form_post(
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
+    import traceback as _tb
+    try:
+        return _order_form_post_inner(
+            order_id=order_id, key=key, test=test,
+            has_roof=has_roof, has_ceiling=has_ceiling, has_windows=has_windows,
+            material_roof=material_roof, material_ceiling=material_ceiling,
+            qty_m2_roof=qty_m2_roof, qty_m2_ceiling=qty_m2_ceiling,
+            qty_win_a=qty_win_a, qty_win_b=qty_win_b, qty_win_c=qty_win_c,
+            has_blinds=has_blinds, qty_blinds=qty_blinds, has_nets=has_nets, qty_nets=qty_nets,
+            eligible_roof=eligible_roof, eligible_ceiling=eligible_ceiling,
+            eligible_win_a=eligible_win_a, eligible_win_b=eligible_win_b, eligible_win_c=eligible_win_c,
+            discount_pct_roof=discount_pct_roof, discount_pct_ceiling=discount_pct_ceiling,
+            grant_amount=grant_amount, split=split,
+            extra_5000a=extra_5000a, extra_5000b=extra_5000b, extra_5000c=extra_5000c,
+            qty_5100=qty_5100, qty_5101=qty_5101,
+            addr_same=addr_same, adresa_realizace=adresa_realizace, popis_dila=popis_dila,
+            thickness_roof=thickness_roof, thickness_ceiling=thickness_ceiling,
+            termin_dokonceni=termin_dokonceni, termin_zalohy_2=termin_zalohy_2,
+            stavebni_pripravenost=stavebni_pripravenost,
+            client_name=client_name, client_street=client_street, client_zip=client_zip,
+            client_city=client_city, client_email=client_email, client_phone=client_phone,
+            client_dob=client_dob,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        tb = _tb.format_exc()
+        logging.error('order_form_post error:\n' + tb)
+        import html as _html
+        return HTMLResponse(status_code=500, content=f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Chyba</title></head>
+<body style="font-family:monospace;padding:24px;background:#fff8f8;">
+<h2 style="color:#c00;">Chyba při zpracování objednávky</h2>
+<pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:13px;">{_html.escape(tb)}</pre>
+</body></html>""")
+
+
+def _order_form_post_inner(
+    order_id, key, test,
+    has_roof, has_ceiling, has_windows,
+    material_roof, material_ceiling,
+    qty_m2_roof, qty_m2_ceiling,
+    qty_win_a, qty_win_b, qty_win_c,
+    has_blinds, qty_blinds, has_nets, qty_nets,
+    eligible_roof, eligible_ceiling,
+    eligible_win_a, eligible_win_b, eligible_win_c,
+    discount_pct_roof, discount_pct_ceiling,
+    grant_amount, split,
+    extra_5000a, extra_5000b, extra_5000c,
+    qty_5100, qty_5101,
+    addr_same, adresa_realizace, popis_dila,
+    thickness_roof, thickness_ceiling,
+    termin_dokonceni, termin_zalohy_2,
+    stavebni_pripravenost,
+    client_name, client_street, client_zip,
+    client_city, client_email, client_phone,
+    client_dob,
+):
     uid, models = odoo_connect()
 
     def call(model, method, args, kw={}):
