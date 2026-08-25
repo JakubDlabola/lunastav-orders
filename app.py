@@ -1205,6 +1205,14 @@ def _order_form_post_inner(
 
     addr_value = 'shodné s trvalou adresou' if addr_same else (adresa_realizace or '')
     insul_area = (float(qty_m2_roof or 0) if has_roof else 0) + (float(qty_m2_ceiling or 0) if has_ceiling else 0)
+
+    # If the order was already confirmed (state='sale'), reset it to draft first so we can
+    # replace its lines; confirmed orders reject the (5,0,0) line-deletion command.
+    current_state = call('sale.order', 'read', [[order_id]], {'fields': ['state']})[0]['state']
+    if current_state == 'sale':
+        call('sale.order', 'action_cancel', [[order_id]])
+        call('sale.order', 'action_draft', [[order_id]])
+
     call('sale.order', 'write', [[order_id], {
         'order_line': order_lines,
         'x_studio_zaloha_kc': zaloha,
