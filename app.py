@@ -96,7 +96,8 @@ def _find_contract_sig_page_and_posY(reader):
 
 
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
-                         company_partner_id=None, company_email=None, salesperson_partner_id=None):
+                         company_partner_id=None, company_email=None, salesperson_partner_id=None,
+                         client_name='', has_grant=False):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
     company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
     company_email      = company_email      or _SIGN_COMPANY_EMAIL
@@ -166,11 +167,32 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.16,
             }])
 
-    # 5. Create the signing request
+    # 5. Build grant-conditional email message for the client
+    if has_grant:
+        client_msg = (
+            'Vážený zákazníku,<br><br>'
+            f'zasíláme Vám smlouvu o dílo č. <strong>{order_name}</strong> k elektronickému podpisu.<br><br>'
+            'Pro Vaši realizaci byla schválena dotace NZÚ. Smlouva obsahuje podmínky čerpání dotace — '
+            'prosíme o pečlivé přečtení před podpisem.<br><br>'
+            'Po Vašem podpisu bude smlouva předána k podpisu zástupci LUNASTAV CZ s.r.o. '
+            'Po oboustranném podpisu obdržíte potvrzenou kopii e-mailem.<br><br>'
+            'S pozdravem,<br>LUNASTAV CZ s.r.o.'
+        )
+    else:
+        client_msg = (
+            'Vážený zákazníku,<br><br>'
+            f'zasíláme Vám smlouvu o dílo č. <strong>{order_name}</strong> k elektronickému podpisu.<br><br>'
+            'Po Vašem podpisu bude smlouva předána k podpisu zástupci LUNASTAV CZ s.r.o. '
+            'Po oboustranném podpisu obdržíte potvrzenou kopii e-mailem.<br><br>'
+            'S pozdravem,<br>LUNASTAV CZ s.r.o.'
+        )
+
+    # 6. Create the signing request
     request_id = call('sign.request', 'create', [{
         'template_id': template_id,
         'reference': order_name,
-        'subject': f'LUNASTAV - potvrzení SOD {order_name}',
+        'subject': f'LUNASTAV — smlouva o dílo č. {order_name}',
+        'message': client_msg,
         'send_channel': 'email',
         'request_item_ids': [
             (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id}),
@@ -182,13 +204,42 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     if salesperson_partner_id:
         call_fn('sign.request', 'message_subscribe', [[request_id], [salesperson_partner_id]])
 
-    # Build the direct client signing URL from the access_token on their item
+    # Build signing URLs for both client and company
     sign_url = None
-    items = call_fn('sign.request.item', 'search_read',
-                    [[('sign_request_id', '=', request_id), ('role_id', '=', client_role_id)]],
-                    {'fields': ['access_token']})
-    if items:
-        sign_url = f'{ODOO_URL}/sign/document/{request_id}/{items[0]["access_token"]}'
+    company_sign_url = None
+    all_items = call_fn('sign.request.item', 'search_read',
+                        [[('sign_request_id', '=', request_id)]],
+                        {'fields': ['role_id', 'access_token']})
+    for item in all_items:
+        url = f'{ODOO_URL}/sign/document/{request_id}/{item["access_token"]}'
+        if item['role_id'][0] == client_role_id:
+            sign_url = url
+        elif item['role_id'][0] == company_role_id:
+            company_sign_url = url
+
+    # 7. Send a dedicated email to Lukáš with client name in subject and body
+    if company_sign_url and company_email:
+        client_display = client_name or order_name
+        lukas_body = (
+            '<p>Dobrý den,</p>'
+            f'<p>zákazník <strong>{client_display}</strong> podepsal objednávku k zakázce '
+            f'<strong>{order_name}</strong>.</p>'
+            '<p>Prosíme o Váš podpis jako zástupce zhotovitele:</p>'
+            f'<p><a href="{company_sign_url}" style="display:inline-block;padding:10px 22px;'
+            'background:#c8a840;color:#fff;text-decoration:none;border-radius:5px;font-weight:bold;">'
+            'Podepsat smlouvu</a></p>'
+            '<p style="color:#888;font-size:12px;">LUNASTAV CZ s.r.o. — automatická notifikace</p>'
+        )
+        try:
+            mail_id = call_fn('mail.mail', 'create', [{
+                'email_to': company_email,
+                'subject': f'SOD {order_name} — {client_display} — vyžaduje Váš podpis',
+                'body_html': lukas_body,
+                'auto_delete': True,
+            }])
+            call_fn('mail.mail', 'send', [[mail_id]])
+        except Exception:
+            logging.warning('Failed to send custom Lukáš email for %s', order_name)
 
     return request_id, sign_url
 
@@ -1227,7 +1278,9 @@ def order_form_post(
                              partner_id_val, partner.get('email', ''),
                              company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
                              company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
-                             salesperson_partner_id=salesperson_partner_id)
+                             salesperson_partner_id=salesperson_partner_id,
+                             client_name=partner.get('name', ''),
+                             has_grant=grant_amount > 0)
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
