@@ -1231,13 +1231,26 @@ def _order_form_post_inner(
     # Generate contract PDF immediately after saving
     updated = call('sale.order', 'read', [[order_id]], {'fields': [
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
-        'x_studio_adresa_realizace', 'x_studio_popis_dila', 'user_id',
+        'x_studio_adresa_realizace', 'x_studio_popis_dila', 'user_id', 'opportunity_id',
         'x_studio_zaloha_kc', 'x_studio_termin_zalohy_2',
         'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
         'x_studio_float_field_45q_1jsh2tmcd', 'x_studio_vyse_dotace_kc',
         'x_studio_cena_po_odecteni_dotace',
     ]})[0]
+
+    # Look up CRM lead fields for sign request annotation
+    _crm_opportunity = ''
+    _crm_tipar = ''
+    _crm_obchodnik = ''
+    if updated.get('opportunity_id'):
+        _lead = call('crm.lead', 'read', [[updated['opportunity_id'][0]]],
+                     {'fields': ['name', 'user_id', 'x_studio_tipar_3']})
+        if _lead:
+            _lead = _lead[0]
+            _crm_opportunity = _lead.get('name') or ''
+            _crm_obchodnik   = (_lead.get('user_id') or [None, ''])[1] or ''
+            _crm_tipar       = (_lead.get('x_studio_tipar_3') or [None, ''])[1] or ''
     partner_id_val = updated['partner_id'][0]
     partner = call('res.partner', 'read', [[partner_id_val]], {'fields': [
         'name', 'street', 'zip', 'city', 'email', 'phone', 'x_studio_datum_narozeni',
@@ -1300,6 +1313,12 @@ def _order_form_post_inner(
                              company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
                              salesperson_partner_id=salesperson_partner_id,
                              client_name=partner.get('name', ''))
+        if _crm_opportunity or _crm_tipar or _crm_obchodnik:
+            call('sign.request', 'write', [[_req_id], {
+                'x_crm_opportunity': _crm_opportunity,
+                'x_crm_tipar':       _crm_tipar,
+                'x_crm_obchodnik':   _crm_obchodnik,
+            }])
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
