@@ -97,7 +97,7 @@ def _find_contract_sig_page_and_posY(reader):
 
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
                          company_partner_id=None, company_email=None, salesperson_partner_id=None,
-                         client_name=''):
+                         client_name='', crm_opportunity='', crm_tipar='', crm_obchodnik=''):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
     company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
     company_email      = company_email      or _SIGN_COMPANY_EMAIL
@@ -169,8 +169,8 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
                 'posX': posX, 'posY': posY, 'width': 0.30, 'height': 0.16,
             }])
 
-    # 5. Create the signing request
-    request_id = call('sign.request', 'create', [{
+    # 5. Create the signing request (CRM fields included so they're present when invitation emails fire)
+    create_vals = {
         'template_id': template_id,
         'reference': order_name,
         'subject': f'LUNASTAV - potvrzení SOD {order_name} pro {client_name}' if client_name else f'LUNASTAV - potvrzení SOD {order_name}',
@@ -179,7 +179,11 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
             (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id}),
             (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id}),
         ],
-    }])
+    }
+    if crm_opportunity: create_vals['x_crm_opportunity'] = crm_opportunity
+    if crm_tipar:       create_vals['x_crm_tipar']       = crm_tipar
+    if crm_obchodnik:   create_vals['x_crm_obchodnik']   = crm_obchodnik
+    request_id = call('sign.request', 'create', [create_vals])
 
     # Subscribe the salesperson as a follower so they can see this request with Sign/User access
     if salesperson_partner_id:
@@ -1349,13 +1353,10 @@ def _order_form_post_inner(
                              company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
                              company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
                              salesperson_partner_id=salesperson_partner_id,
-                             client_name=partner.get('name', ''))
-        if _crm_opportunity or _crm_tipar or _crm_obchodnik:
-            call('sign.request', 'write', [[_req_id], {
-                'x_crm_opportunity': _crm_opportunity,
-                'x_crm_tipar':       _crm_tipar,
-                'x_crm_obchodnik':   _crm_obchodnik,
-            }])
+                             client_name=partner.get('name', ''),
+                             crm_opportunity=_crm_opportunity,
+                             crm_tipar=_crm_tipar,
+                             crm_obchodnik=_crm_obchodnik)
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
