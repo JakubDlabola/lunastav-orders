@@ -350,6 +350,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     .hidden {{ display: none !important; }}
     .grant-info {{ font-size: 13px; color: #555; margin-top: 4px; }}
     input[type=text], input[type=email], input[type=tel], input[type=date] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
+    .field-label-row {{ display: flex; align-items: center; justify-content: space-between; margin: 20px 0 8px; }}
+    .field-label-row .field-label {{ margin: 0; }}
+    .edit-toggle-btn {{ font-size: 12px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; color: #666; cursor: pointer; white-space: nowrap; }}
+    .edit-toggle-btn.active {{ background: #fff8e1; border-color: #c8a840; color: #7a5c00; }}
+    textarea[readonly], input[type=text][readonly] {{ background: #f9f9f9; color: #555; cursor: default; }}
   </style>
 </head>
 <body>
@@ -532,7 +537,10 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     </div>
 
     <div id="termin-section" class="hidden">
-      <span class="field-label" style="margin-top:20px;">Termín dokončení</span>
+      <div class="field-label-row" style="margin-top:20px;">
+        <span class="field-label">Termín dokončení</span>
+        <button type="button" id="edit-btn-termin_dokonceni" class="edit-toggle-btn" onclick="toggleManual('termin_dokonceni', updateTermin)" title="Upravit ručně">✎ Upravit</button>
+      </div>
       <div class="options">
         <label class="opt-wrap"><input type="radio" name="termin_days" value="45" onchange="updateTermin()"><span class="opt-btn">45 dní</span></label>
         <label class="opt-wrap"><input type="radio" name="termin_days" value="90" onchange="updateTermin()"><span class="opt-btn">90 dní</span></label>
@@ -544,16 +552,22 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
           <label class="opt-wrap"><input type="radio" name="termin_cond" value="dotace" onchange="updateTermin()"><span class="opt-btn">od schválení dotace</span></label>
         </div>
       </div>
-      <input type="text" name="termin_dokonceni" id="termin_dokonceni" style="margin-top:8px; width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px;" placeholder="Termín bude sestaven po výběru výše">
+      <input type="text" name="termin_dokonceni" id="termin_dokonceni" readonly style="margin-top:8px; width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px;" placeholder="Termín bude sestaven po výběru výše">
     </div>
 
     <div style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
-      <span class="field-label">Popis díla</span>
-      <textarea name="popis_dila" id="popis_dila" rows="5"
+      <div class="field-label-row">
+        <span class="field-label">Popis díla</span>
+        <button type="button" id="edit-btn-popis_dila" class="edit-toggle-btn" onclick="toggleManual('popis_dila', updatePopisDila)" title="Upravit ručně">✎ Upravit</button>
+      </div>
+      <textarea name="popis_dila" id="popis_dila" rows="5" readonly
                 style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
       <div id="stavebni-section" class="hidden">
-        <span class="field-label" style="margin-top:20px;">Stavební připravenost</span>
-        <textarea name="stavebni_pripravenost" id="stavebni_pripravenost" rows="6"
+        <div class="field-label-row" style="margin-top:20px;">
+          <span class="field-label">Stavební připravenost</span>
+          <button type="button" id="edit-btn-stavebni_pripravenost" class="edit-toggle-btn" onclick="toggleManual('stavebni_pripravenost', updateStavebni)" title="Upravit ručně">✎ Upravit</button>
+        </div>
+        <textarea name="stavebni_pripravenost" id="stavebni_pripravenost" rows="6" readonly
                   style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
       </div>
     </div>
@@ -566,6 +580,26 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751}};
 const WIN_RATES = {{a: 9000, b: 9900, c: 10800}};
+
+const _manualFields = new Set();
+function toggleManual(fieldId, autoFn) {{
+  const field = document.getElementById(fieldId);
+  const btn   = document.getElementById('edit-btn-' + fieldId);
+  if (_manualFields.has(fieldId)) {{
+    if (!confirm('Va\u0161e \u00fapravy budou ztraceny a pole bude znovu vypln\u011bno automaticky. Pokra\u010dovat?')) return;
+    _manualFields.delete(fieldId);
+    field.readOnly = true;
+    btn.classList.remove('active');
+    btn.textContent = '\u270e Upravit';
+    if (autoFn) autoFn();
+  }} else {{
+    _manualFields.add(fieldId);
+    field.readOnly = false;
+    btn.classList.add('active');
+    btn.textContent = '\u21a9 Obnovit auto';
+    field.focus();
+  }}
+}}
 
 const _STRIKANA_TEXT = 'Stavebn\u00ed prostor bude kv\u016fli zamezen\u00ed pr\u016fvanu uzav\u0159en a vytopen minim\u00e1ln\u011b na teplotu 17\u00b0C. M\u00edsta uvnit\u0159 stavebn\u00edho prostoru, jen\u017e nesm\u00ed b\u00fdt zne\u010di\u0161t\u011bna aplika\u010dn\u00ed chemi\u00ed, budou objednatelem zakryta, v p\u0159\u00edpad\u011b venkovn\u00ed aplikace objednatel proti p\u0159\u00edpadn\u00e9mu zne\u010di\u0161t\u011bn\u00ed zaji\u0161t\u00ed okol\u00ed v dosahu cca 100 m. Objednatel zaji\u0161t\u00ed, aby okolo kom\u00ednov\u00e9ho t\u011blesa byla neho\u0159lav\u00e1 vrstva v minim\u00e1ln\u00ed tlou\u0161\u0165ce 50 mm. S\u00e1drokartonov\u00e9 ro\u0161ty mus\u00ed b\u00fdt s ohledem na rezervu pro b\u011b\u017enou toleranci tlou\u0161\u0165ky PUR p\u011bny nav\u00fd\u0161eny o 3 cm. Objednatel mus\u00ed b\u011bhem pr\u016fb\u011bhu aplikace izolace zamezit vstupu nepovolan\u00fdch do stavebn\u00edch prostor\u016f.';
 const _BASE_STAVEBNI = 'Stavební připravenost spočívá především ve vyklizení místa realizace.';
@@ -580,6 +614,7 @@ function selectExtra5000(el) {{
 }}
 
 function updateStavebni() {{
+  if (_manualFields.has('stavebni_pripravenost')) return;
   const hasRoof = document.getElementById('chk_roof').checked;
   const hasCeil = document.getElementById('chk_ceiling').checked;
   const sec = document.getElementById('stavebni-section');
@@ -595,6 +630,7 @@ function updateStavebni() {{
 const MAT_NAME = {{thermofloc: 'Thermofloc', supafil: 'SUPAFIL LOFT PRO', strikana: 'Stříkaná izolace'}};
 
 function updatePopisDila() {{
+  if (_manualFields.has('popis_dila')) return;
   const hasRoof = document.getElementById('chk_roof').checked;
   const hasCeil = document.getElementById('chk_ceiling').checked;
   const hasWin  = document.getElementById('chk_windows').checked;
@@ -695,6 +731,7 @@ function getSplitPct() {{
 }}
 
 function updateTermin() {{
+  if (_manualFields.has('termin_dokonceni')) return;
   const daysEl = document.querySelector('input[name=termin_days]:checked');
   const days   = daysEl ? daysEl.value : '';
   const pct    = getSplitPct();
