@@ -97,7 +97,8 @@ def _find_contract_sig_page_and_posY(reader):
 
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
                          company_partner_id=None, company_email=None, salesperson_partner_id=None,
-                         client_name='', crm_opportunity='', crm_tipar='', crm_obchodnik=''):
+                         client_name='', crm_opportunity='', crm_tipar='', crm_obchodnik='',
+                         tipar_partner_id=None):
     """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
     company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
     company_email      = company_email      or _SIGN_COMPANY_EMAIL
@@ -185,9 +186,10 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     if crm_obchodnik:   create_vals['x_crm_obchodnik']   = crm_obchodnik
     request_id = call('sign.request', 'create', [create_vals])
 
-    # Subscribe the salesperson as a follower so they can see this request with Sign/User access
-    if salesperson_partner_id:
-        call_fn('sign.request', 'message_subscribe', [[request_id], [salesperson_partner_id]])
+    # Subscribe salesperson and Tipař as followers so they can see this request
+    _followers = [p for p in [salesperson_partner_id, tipar_partner_id] if p]
+    if _followers:
+        call_fn('sign.request', 'message_subscribe', [[request_id], _followers])
 
     # Build the direct client signing URL from the access_token on their item
     sign_url = None
@@ -1284,6 +1286,7 @@ def _order_form_post_inner(
     _crm_opportunity = ''
     _crm_tipar = ''
     _crm_obchodnik = ''
+    _tipar_partner_id = None
     if updated.get('opportunity_id'):
         _lead = call('crm.lead', 'read', [[updated['opportunity_id'][0]]],
                      {'fields': ['name', 'user_id', 'x_studio_tipar_3']})
@@ -1292,6 +1295,11 @@ def _order_form_post_inner(
             _crm_opportunity = _lead.get('name') or ''
             _crm_obchodnik   = (_lead.get('user_id') or [None, ''])[1] or ''
             _crm_tipar       = (_lead.get('x_studio_tipar_3') or [None, ''])[1] or ''
+            _tipar_uid = (_lead.get('x_studio_tipar_3') or [None])[0]
+            if _tipar_uid:
+                _tu = call('res.users', 'read', [[_tipar_uid]], {'fields': ['partner_id']})
+                if _tu:
+                    _tipar_partner_id = _tu[0]['partner_id'][0]
     partner_id_val = updated['partner_id'][0]
     partner = call('res.partner', 'read', [[partner_id_val]], {'fields': [
         'name', 'street', 'zip', 'city', 'email', 'phone', 'x_studio_datum_narozeni',
@@ -1356,7 +1364,8 @@ def _order_form_post_inner(
                              client_name=partner.get('name', ''),
                              crm_opportunity=_crm_opportunity,
                              crm_tipar=_crm_tipar,
-                             crm_obchodnik=_crm_obchodnik)
+                             crm_obchodnik=_crm_obchodnik,
+                             tipar_partner_id=_tipar_partner_id)
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
