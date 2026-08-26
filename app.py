@@ -596,7 +596,7 @@ function toggleManual(fieldId, autoFn) {{
     _manualFields.add(fieldId);
     field.readOnly = false;
     btn.classList.add('active');
-    btn.textContent = '\u21a9 Obnovit auto';
+    btn.textContent = '\u21a9 Obnovit automatick\u00e9 vypl\u0148ov\u00e1n\u00ed';
     field.focus();
   }}
 }}
