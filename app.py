@@ -353,6 +353,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     button[type=submit] {{ width: 100%; margin-top: 28px; padding: 13px; font-size: 15px; background: #c8a840; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }}
     button[type=submit]:hover {{ background: #b5942e; }}
     button[type=submit]:disabled {{ background: #ccc; cursor: default; }}
+    #missing-list {{ margin-top: 20px; padding: 12px 16px; background: #fff8f0; border: 1px solid #f0d8b0; border-radius: 6px; font-size: 13px; color: #7a4f00; }}
+    #missing-list ul {{ margin: 6px 0 0; padding-left: 18px; }}
+    #missing-list li {{ margin-bottom: 3px; }}
     .hidden {{ display: none !important; }}
     .grant-info {{ font-size: 13px; color: #555; margin-top: 4px; }}
     input[type=text], input[type=email], input[type=tel], input[type=date] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
@@ -579,6 +582,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     </div>
 
 
+    <div id="missing-list" class="hidden"></div>
     <button type="submit" id="submitBtn" disabled>Vytvořit objednávku</button>
   </form>
 </div>
@@ -902,31 +906,53 @@ function checkSubmit() {{
   const hasRoof = document.getElementById('chk_roof').checked;
   const hasCeil = document.getElementById('chk_ceiling').checked;
   const hasWin  = document.getElementById('chk_windows').checked;
-  if (!hasRoof && !hasCeil && !hasWin) {{ document.getElementById('submitBtn').disabled = true; return; }}
-  const matRoof = hasRoof ? document.querySelector('input[name=material_roof]:checked')?.value    : 'ok';
-  const matCeil = hasCeil ? document.querySelector('input[name=material_ceiling]:checked')?.value : 'ok';
-  const qRoof = hasRoof ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 1;
-  const qCeil = hasCeil ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 1;
-  const qWinA = hasWin  ? (parseFloat(document.getElementById('qty_win_a').value) || 0) : 0;
-  const qWinB = hasWin  ? (parseFloat(document.getElementById('qty_win_b').value) || 0) : 0;
-  const qWinC = hasWin  ? (parseFloat(document.getElementById('qty_win_c').value) || 0) : 0;
-  const qWinTot = qWinA + qWinB + qWinC;
-  const winOnly = hasWin && !hasRoof && !hasCeil;
-  const split = winOnly ? '80-20' : getSplit();
-  const eTotal = parseFloat(document.getElementById('inp_elig_roof').value    || 0)
-               + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
-               + parseFloat(document.getElementById('inp_elig_win_a').value   || 0)
-               + parseFloat(document.getElementById('inp_elig_win_b').value   || 0)
-               + parseFloat(document.getElementById('inp_elig_win_c').value   || 0);
-  const terminDays = document.querySelector('input[name=termin_days]:checked');
-  const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
-  const clientPhone = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
-  const phoneOk = /^\d{{9,}}$/.test(clientPhone);
-  document.getElementById('submitBtn').disabled = !(
-    (!hasRoof || (matRoof && qRoof > 0)) &&
-    (!hasCeil || (matCeil && qCeil > 0)) &&
-    (!hasWin  || qWinTot > 0) && split && eTotal > 0 && terminDays && terminZalohy2 && phoneOk
-  );
+  const missing = [];
+
+  if (!hasRoof && !hasCeil && !hasWin) {{
+    missing.push('Vyberte alespoň jednu kategorii (střecha, strop, okna)');
+  }} else {{
+    const matRoof = hasRoof ? document.querySelector('input[name=material_roof]:checked')?.value    : 'ok';
+    const matCeil = hasCeil ? document.querySelector('input[name=material_ceiling]:checked')?.value : 'ok';
+    const qRoof = hasRoof ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 1;
+    const qCeil = hasCeil ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 1;
+    const qWinA = hasWin  ? (parseFloat(document.getElementById('qty_win_a').value) || 0) : 0;
+    const qWinB = hasWin  ? (parseFloat(document.getElementById('qty_win_b').value) || 0) : 0;
+    const qWinC = hasWin  ? (parseFloat(document.getElementById('qty_win_c').value) || 0) : 0;
+    const qWinTot = qWinA + qWinB + qWinC;
+    const winOnly = hasWin && !hasRoof && !hasCeil;
+    const split = winOnly ? '80-20' : getSplit();
+    const eTotal = parseFloat(document.getElementById('inp_elig_roof').value    || 0)
+                 + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
+                 + parseFloat(document.getElementById('inp_elig_win_a').value   || 0)
+                 + parseFloat(document.getElementById('inp_elig_win_b').value   || 0)
+                 + parseFloat(document.getElementById('inp_elig_win_c').value   || 0);
+    const terminDays   = document.querySelector('input[name=termin_days]:checked');
+    const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
+    const clientPhone  = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
+    const phoneOk = /^\d{{9,}}$/.test(clientPhone);
+
+    if (hasRoof && !matRoof)    missing.push('Vyberte materiál střechy');
+    if (hasRoof && qRoof <= 0)  missing.push('Zadejte plochu střechy (m²)');
+    if (hasCeil && !matCeil)    missing.push('Vyberte materiál stropu');
+    if (hasCeil && qCeil <= 0)  missing.push('Zadejte plochu stropu (m²)');
+    if (hasWin  && qWinTot <= 0) missing.push('Zadejte plochu oken (m²)');
+    if (!winOnly && !split)     missing.push('Vyberte způsob platby (záloha / doplatek)');
+    if (!terminDays)            missing.push('Vyberte termín dokončení');
+    if (!terminZalohy2)         missing.push('Vyberte termín splatnosti zálohy');
+    if (!phoneOk)               missing.push('Zadejte platné telefonní číslo (min. 9 číslic)');
+    if (eTotal <= 0 && missing.length === 0) missing.push('Vypočítejte cenu před odesláním');
+  }}
+
+  const box = document.getElementById('missing-list');
+  if (missing.length > 0) {{
+    box.innerHTML = '<strong>Před odesláním doplňte:</strong><ul>' +
+      missing.map(function(m) {{ return '<li>' + m + '</li>'; }}).join('') + '</ul>';
+    box.classList.remove('hidden');
+  }} else {{
+    box.classList.add('hidden');
+    box.innerHTML = '';
+  }}
+  document.getElementById('submitBtn').disabled = missing.length > 0;
 }}
 
 function winTotalM2() {{
@@ -1242,9 +1268,19 @@ def _order_form_post_inner(
     blinds_cost = round(1000 * (float(qty_blinds or 0) if has_blinds else 0.0))
     nets_cost   = round(1000 * (float(qty_nets   or 0) if has_nets   else 0.0))
     total = eligible_roof + eligible_ceiling + eligible_win_a + eligible_win_b + eligible_win_c + blinds_cost + nets_cost + doprava_price + pochozi_total_incl
-    zaloha   = round(total * split_pct[0] / 100)
-    doplatek = round(total * split_pct[1] / 100)
-    client_pays = round(total - grant_amount)
+    # eligible_win values are the net client cost (listed price minus grant/m²), not the full
+    # contract price. Restore the full listed price for záloha/doplatek and client_pays.
+    if has_windows:
+        _win_full = (9000 * float(qty_win_a or 0) +
+                     9900 * float(qty_win_b or 0) +
+                     10800 * float(qty_win_c or 0))
+        _win_net  = eligible_win_a + eligible_win_b + eligible_win_c
+        total_for_split = total - _win_net + _win_full
+    else:
+        total_for_split = total
+    zaloha   = round(total_for_split * split_pct[0] / 100)
+    doplatek = round(total_for_split * split_pct[1] / 100)
+    client_pays = round(total_for_split - grant_amount)
 
     addr_value = 'shodné s trvalou adresou' if addr_same else (adresa_realizace or '')
     insul_area = (float(qty_m2_roof or 0) if has_roof else 0) + (float(qty_m2_ceiling or 0) if has_ceiling else 0)
