@@ -278,7 +278,13 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
     total_real_listed_excl = real_listed_excl + doprava_subtotal
     amount_untaxed = order.get('amount_untaxed') or 0
     real_discount_excl = max(0.0, total_real_listed_excl - amount_untaxed)
-    discount_pct = round(real_discount_excl / total_real_listed_excl * 100) if total_real_listed_excl else 0
+    actual_pct = round(real_discount_excl / total_real_listed_excl * 100) if total_real_listed_excl else 0
+    discount_pct = max(3, actual_pct)
+    if actual_pct < 3 and amount_untaxed:
+        # Rescale base so the displayed Kč amount is exactly 3% of the shown listed price.
+        # Without this, the forced 3% label would be inconsistent with the tiny real amount.
+        total_real_listed_excl = round(amount_untaxed / 0.97)
+        real_discount_excl = total_real_listed_excl - round(amount_untaxed)
 
     replacements = {
         '{code}':                 order.get('name', ''),
