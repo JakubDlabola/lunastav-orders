@@ -1248,7 +1248,7 @@ def _order_form_post_inner(
         }))
 
     if has_sikminy and material_sikminy:
-        ref = REF_MAP[material_sikminy] + 'S'
+        ref = REF_MAP[material_sikminy] + 'A'
         qty = float(qty_m2_sikminy or 0)
         prods = call('product.product', 'search_read',
                      [[['default_code', '=', ref]]], {'fields': ['id', 'name'], 'limit': 1})
