@@ -43,12 +43,16 @@ print("Updated sign completion email template (id=1291).")
 # For P2 orders the sign link is replaced with our SMS verification page.
 # t-att-href takes a plain Python expression (no {{ }} needed).
 # t-attf-style uses {{ }} for QWeb interpolation (plain string, not f-string).
+# Non-Objednatel signers (our representative) get a "Zaměřovač:" line prepended.
 INVITE_ARCH = """\
 <t t-name="sign.sign_template_mail_request">
 <table border="0" cellpadding="0" style="background-color: white; padding: 0px; border-collapse:separate; width: 100%;">
     <tr><td valign="top">
+        <t t-if="record.role_id.name != 'Objednatel'">
+            <p><strong>Zaměřovač:</strong> <t t-out="record.sign_request_id.x_crm_obchodnik or ''"/></p>
+        </t>
         <p>Dobrý den, <t t-out="record.partner_id.name"/>,</p>
-        <p>žádáme Vás o podpis smlouvy o dílo č. <strong><t t-out="record.sign_request_id.reference"/></strong>.</p>
+        <p>žádáme Vás o podpis smlouvy o dílo č. <strong><t t-out="record.sign_request_id.reference"/></strong>.</p>
         <p>Pro přístup k dokumentu klikněte na tlačítko níže.</p>
         <p style="color:#888;">Pokud jste smlouvu již podepsal(a), nemusíte provádět žádné další kroky.</p>
     </td></tr>
