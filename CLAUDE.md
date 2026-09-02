@@ -17,9 +17,9 @@ All documentation lives in `docs/`. Update or create the relevant doc in the sam
 | File | Purpose |
 |------|---------|
 | `docs/CHANGELOG.md` | Prepend a new entry for every PR — never edit old entries |
-| `docs/user-guide.md` | Living doc — edit in place |
-| `docs/code-overview.md` | Architecture summary — edit in place |
-| `docs/features/` | One file per major feature, named `<feature>.md` |
+| `docs/user-guide.md` | Living doc — edit in place (written in Czech) |
+
+Code structure and architecture are documented via comments in the scripts themselves — do not create separate code-overview documents.
 
 **Changelog format:**
 ```
