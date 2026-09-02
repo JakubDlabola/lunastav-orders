@@ -1,67 +1,67 @@
-# User Guide — LUNASTAV Order Form
+# Uživatelská příručka — objednávkový formulář LUNASTAV
 
-## Accessing the form
-Open `https://lunastav-production.up.railway.app/order/<ORDER_ID>?key=lunastav-smlouva-2025`
+## Přístup k formuláři
+Otevřete `https://lunastav-production.up.railway.app/order/<ORDER_ID>?key=lunastav-smlouva-2025`
 
-Replace `<ORDER_ID>` with the Odoo sale order ID (numeric).
+Místo `<ORDER_ID>` doplňte číselné ID zakázky z Odoo.
 
-## Filling in the form
+## Vyplnění formuláře
 
-### 1. Client details
-Pre-filled from Odoo. You can override the name, address, email, phone, and date of birth here — the contract will use your overrides, and the partner record in Odoo is updated.
+### 1. Údaje klienta
+Předvyplněno z Odoo. Jméno, adresu, e-mail, telefon a datum narození lze na formuláři upravit — smlouva použije vaše hodnoty a partner v Odoo se také aktualizuje.
 
-### 2. Work types
-Check one or more boxes:
+### 2. Typ prací
+Zaškrtněte jeden nebo více typů:
 
-| Type | What it covers |
-|------|---------------|
-| Střecha | Flat/pitched roof insulation |
-| Strop | Ceiling insulation |
-| Šikminy | Rafter/sloped ceiling insulation |
-| Okna | Window replacement |
+| Typ | Co zahrnuje |
+|-----|-------------|
+| Střecha | Zateplení ploché nebo šikmé střechy |
+| Strop | Zateplení stropu |
+| Šikminy | Zateplení krokví / šikmých podhledů |
+| Okna | Výměna oken |
 
-Each selected type shows its own section below.
+Každý zaškrtnutý typ zobrazí odpovídající sekci níže.
 
-### 3. Insulation sections (Střecha / Strop / Šikminy)
-- **Materiál** — select the insulation product
-- **Tloušťka izolace** — thickness in cm (default 35)
-- **Plocha** — area in m²
+### 3. Sekce zateplení (Střecha / Strop / Šikminy)
+- **Materiál** — vyberte izolační produkt
+- **Tloušťka izolace** — tloušťka v cm (výchozí hodnota 35)
+- **Plocha** — plocha v m²
 
-### 4. Windows section (Okna)
-Enter quantities for each window type (A/B/C). Optionally add blinds (žaluzie) and insect screens (sítě).
+### 4. Sekce oken (Okna)
+Zadejte počty pro každý typ okna (A/B/C). Volitelně přidejte žaluzie a sítě proti hmyzu.
 
-### 5. Price preview
-The right panel updates live and shows:
-- Effective price per m² (after grant)
-- Total grant amount
-- Záloha (deposit) and Doplatek (balance)
+### 5. Náhled ceny
+Panel na pravé straně se aktualizuje průběžně a zobrazuje:
+- Efektivní cenu za m² (po dotaci)
+- Celkovou výši dotace
+- Zálohu a doplatek
 
-### 6. Additional options
-- **Doprava** — delivery charge (Kč, incl. VAT)
-- **Pochozí vrstva** — walkable surface products
-- **Stavební připravenost** — site readiness notes (appear in contract)
-- **Popis díla** — auto-generated from selections; you can edit manually
+### 6. Další možnosti
+- **Doprava** — cena dopravy (Kč vč. DPH)
+- **Pochozí vrstva** — produkty pochozí vrstvy
+- **Stavební připravenost** — poznámky k připravenosti stavby (zobrazí se ve smlouvě)
+- **Popis díla** — generuje se automaticky z výběru; lze ručně upravit
 
-### 7. Payment split
-- Default: 60% záloha / 40% doplatek
-- Windows-only orders: 80% / 20%
-- Custom split: check "Vlastní rozdělení"
+### 7. Rozdělení platby
+- Výchozí: 60 % záloha / 40 % doplatek
+- Pouze okna: 80 % / 20 %
+- Vlastní rozdělení: zaškrtněte „Vlastní rozdělení"
 
-### 8. Submitting
-Click **Odeslat smlouvu k podpisu**. The system will:
-1. Update the Odoo order
-2. Generate and attach the PDF contract
-3. Send the signing request — client receives an email with a link to sign first, then the company co-signs
+### 8. Odeslání
+Klikněte na **Odeslat smlouvu k podpisu**. Systém provede:
+1. Aktualizaci zakázky v Odoo
+2. Vygenerování a připojení PDF smlouvy
+3. Odeslání žádosti o podpis — klient obdrží e-mail s odkazem pro podpis jako první, poté spolupodepisuje zhotovitel
 
-## Signing flow
-- Client receives email → clicks link → signs in browser (no account needed)
-- After client signs, company representative receives notification and co-signs
-- Both parties receive a signed copy by email
+## Průběh podpisu
+- Klient obdrží e-mail → klikne na odkaz → podepíše v prohlížeči (bez nutnosti registrace)
+- Po podpisu klientem obdrží zástupce firmy upozornění a spolupodepíše
+- Obě strany obdrží e-mailem podepsanou kopii
 
-## Troubleshooting
+## Řešení problémů
 
-| Problem | Likely cause |
-|---------|-------------|
-| Form won't submit | Check the checklist that appears above the button — all red items must be resolved |
-| "Produkt nenalezen v Odoo" error | The material/product code combination doesn't exist in Odoo — contact the dev |
-| Wrong client name on contract | Edit the "Jméno klienta" field on the form before submitting |
+| Problém | Pravděpodobná příčina |
+|---------|-----------------------|
+| Formulář nelze odeslat | Zkontrolujte seznam chyb nad tlačítkem — všechny červené položky musí být vyřešeny |
+| Chyba „Produkt nenalezen v Odoo" | Kombinace materiálu a produktového kódu v Odoo neexistuje — kontaktujte vývojáře |
+| Špatné jméno klienta na smlouvě | Před odesláním upravte pole „Jméno klienta" na formuláři |
