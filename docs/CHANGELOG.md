@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-09-02] — Dveře work type + Strop combined-mode grant fix
+- New "Dveře" work type (violet, between Šikminy and Okna): one field — Plocha dveří (m²), default 1.8
+- Fixed price 23 277,77 Kč/m² incl. VAT (1,8 m² = 41 900 Kč); product code 4100; cosmetic 3% discount applied
+- No grant for doors; winOnly mode now also requires !hasDoors
+- When Strop is combined with Střecha or Šikminy, eCeil is set to 750 Kč/m² (grant covers it exactly), bypassing the area-based floor
+
 ## [2026-09-02] — Client name column in Signatures list
 - Added `x_client_name` stored char field to `sign.request` in Odoo (field id=30418)
 - Added "Klient" column to Sign list view (id=1311) via XPath inherit view (id=4634)
