@@ -181,6 +181,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
             (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id}),
         ],
     }
+    if client_name:      create_vals['x_client_name']     = client_name
     if crm_opportunity: create_vals['x_crm_opportunity'] = crm_opportunity
     if crm_tipar:       create_vals['x_crm_tipar']       = crm_tipar
     if crm_obchodnik:   create_vals['x_crm_obchodnik']   = crm_obchodnik
