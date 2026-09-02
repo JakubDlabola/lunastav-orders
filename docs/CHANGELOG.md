@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-09-02] — CRM Podepsáno stage on client signature
+- Automation 58 (LUNASTAV: Dilci podpis) extended: when the client (Objednatel, role=15) signs, the linked CRM opportunity moves to Podepsáno (id=6)
+- Protected stages: Vyhráno (id=4) and Žádost o dotaci schválená (id=7) — stage never moves backwards
+- Lukáš Najman's (Zhotovitel) signature does not trigger the stage flip
+- Chatter note ("Částečný podpis přijat…") now posted to both the sale order and the CRM entry
+
 ## [2026-09-02] — Dveře grant (same as Okna)
 - Dveře now participates in the grant pool: fDoors = GRANT_RATE.windows × qDoors (8 000 Kč/m²)
 - grantPerM2Doors computed proportionally like grantPerM2Win; eligible_doors = listed − grant per m²
