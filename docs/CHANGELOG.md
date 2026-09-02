@@ -1,35 +1,35 @@
 # Changelog
 
-## [2026-09-02] — CRM Podepsáno stage on client signature
-- Automation 58 (LUNASTAV: Dilci podpis) extended: when the client (Objednatel, role=15) signs, the linked CRM opportunity moves to Podepsáno (id=6)
-- Protected stages: Vyhráno (id=4) and Žádost o dotaci schválená (id=7) — stage never moves backwards
-- Lukáš Najman's (Zhotovitel) signature does not trigger the stage flip
-- Chatter note ("Částečný podpis přijat…") now posted to both the sale order and the CRM entry
+## [2026-09-02] — CRM fáze Podepsáno při podpisu klienta
+- Automatizace 58 (LUNASTAV: Dilci podpis) rozšířena: po podpisu klienta (Objednatel, role=15) se propojená CRM příležitost přesune do fáze Podepsáno (id=6)
+- Chráněné fáze: Vyhráno (id=4) a Žádost o dotaci schválená (id=7) — fáze se nikdy neposune zpět
+- Podpis Lukáše Najmana (Zhotovitel) změnu fáze nespouští
+- Zpráva do chatteru („Částečný podpis přijat…") se nyní přidává jak k zakázce, tak k CRM záznamu
 
-## [2026-09-02] — Dveře grant (same as Okna)
-- Dveře now participates in the grant pool: fDoors = GRANT_RATE.windows × qDoors (8 000 Kč/m²)
-- grantPerM2Doors computed proportionally like grantPerM2Win; eligible_doors = listed − grant per m²
-- Preview shows effective rate after grant; listed price still goes on the Odoo order line
+## [2026-09-02] — Dotace pro Dveře (stejná jako Okna)
+- Dveře jsou nově zapojeny do dotačního fondu: fDoors = GRANT_RATE.windows × qDoors (8 000 Kč/m²)
+- grantPerM2Doors počítán proporcionálně stejně jako grantPerM2Win; eligible_doors = katalogová cena − dotace na m²
+- Náhled zobrazuje efektivní cenu po dotaci; na objednávkový řádek v Odoo jde katalogová cena
 
-## [2026-09-02] — Dveře work type + Strop combined-mode grant fix
-- New "Dveře" work type (violet, between Šikminy and Okna): one field — Plocha dveří (m²), default 1.8
-- Fixed price 23 277,77 Kč/m² incl. VAT (1,8 m² = 41 900 Kč); product code 4100; cosmetic 3% discount applied
-- No grant for doors; winOnly mode now also requires !hasDoors
-- When Strop is combined with Střecha or Šikminy, eCeil is set to 750 Kč/m² (grant covers it exactly), bypassing the area-based floor
+## [2026-09-02] — Typ práce Dveře + oprava dotace Stropu v kombinaci
+- Nový typ práce „Dveře" (fialová, mezi Šikminy a Okny): jedno pole — Plocha dveří (m²), výchozí hodnota 1,8
+- Pevná cena 23 277,77 Kč/m² vč. DPH (1,8 m² = 41 900 Kč); kód produktu 4100; aplikována kosmetická sleva 3 %
+- Dveře bez dotace; podmínka winOnly nyní zahrnuje i !hasDoors
+- Pokud je Strop kombinován se Střechou nebo Šikminy, nastaví se eCeil na 750 Kč/m² (dotace plně pokrývá strop), oblast minimální sazby se ignoruje
 
-## [2026-09-02] — Client name column in Signatures list
-- Added `x_client_name` stored char field to `sign.request` in Odoo (field id=30418)
-- Added "Klient" column to Sign list view (id=1311) via XPath inherit view (id=4634)
-- `_create_sign_request()` now writes `x_client_name` at create time
-- Backfilled all 86 existing sign requests from their subject line
+## [2026-09-02] — Sloupec se jménem klienta v přehledu podpisů
+- Přidáno uložené pole `x_client_name` (char) na `sign.request` v Odoo (field id=30418)
+- Sloupec „Klient" přidán do listového pohledu podpisů (id=1311) přes XPath dědičný pohled (id=4634)
+- `_create_sign_request()` nyní zapisuje `x_client_name` při vytváření
+- Doplněno zpětně do všech 86 existujících žádostí o podpis z řádku předmětu e-mailu
 
-## [2026-08-30] — Cosmetic 3% discount amount fix
-- When the real discount is below 3%, the listed-price base is rescaled to `amount_untaxed / 0.97` so the displayed Kč amount is exactly 3% of the shown listed price
-- Prevents the "Sleva: 3% = 179 Kč" inconsistency on full-grant Šikminy/Střecha orders
+## [2026-08-30] — Oprava výše kosmetické 3% slevy
+- Pokud je skutečná sleva nižší než 3 %, katalogová základna se přepočítá na `amount_untaxed / 0,97`, aby zobrazená částka v Kč odpovídala přesně 3 % ze zobrazené katalogové ceny
+- Opravuje nesrovnalost „Sleva: 3 % = 179 Kč" u zakázek Šikminy/Střecha s plnou dotací
 
-## [2026-08-30] — Šikminy work type
-- New work type "Šikminy" (cyan, between Strop and Okna in the order form)
-- Same material options and grant/price logic as Střecha (GRANT_RATE.roof = 2 000 Kč/m²)
-- Product code uses 'A' suffix (same products as Střecha: 3000A, 3100A, 3200A)
-- `winOnly` mode updated — Šikminy + Okna orders use normal split, not forced 80/20
-- Contract insul_area and Popis díla include Šikminy area
+## [2026-08-30] — Typ práce Šikminy
+- Nový typ práce „Šikminy" (azurová, mezi Stropem a Okny ve formuláři)
+- Stejné možnosti materiálu a logika dotace/ceny jako Střecha (GRANT_RATE.roof = 2 000 Kč/m²)
+- Kód produktu používá příponu ‚A' (stejné produkty jako Střecha: 3000A, 3100A, 3200A)
+- Režim winOnly aktualizován — zakázky Šikminy + Okna používají standardní rozdělení, nikoli vynucené 80/20
+- Plocha šikminy zahrnuta do insul_area smlouvy a Popisu díla
