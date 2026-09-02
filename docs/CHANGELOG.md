@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-09-02] — Dveře grant (same as Okna)
+- Dveře now participates in the grant pool: fDoors = GRANT_RATE.windows × qDoors (8 000 Kč/m²)
+- grantPerM2Doors computed proportionally like grantPerM2Win; eligible_doors = listed − grant per m²
+- Preview shows effective rate after grant; listed price still goes on the Odoo order line
+
 ## [2026-09-02] — Dveře work type + Strop combined-mode grant fix
 - New "Dveře" work type (violet, between Šikminy and Okna): one field — Plocha dveří (m²), default 1.8
 - Fixed price 23 277,77 Kč/m² incl. VAT (1,8 m² = 41 900 Kč); product code 4100; cosmetic 3% discount applied

@@ -846,7 +846,8 @@ function calc() {{
 
   const fRoof    = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWinTot;
   const fSimkiny = GRANT_RATE.roof * qSimkiny;
-  const fTot     = fRoof + fCeil + fSimkiny + fWin;
+  const fDoors   = hasDoors ? GRANT_RATE.windows * qDoors : 0;
+  const fTot     = fRoof + fCeil + fSimkiny + fWin + fDoors;
 
   const hasBlinds = hasWin && document.getElementById('chk_blinds').checked;
   const hasNets   = hasWin && document.getElementById('chk_nets').checked;
@@ -902,13 +903,17 @@ function calc() {{
   const dCeil  = lCeil > 0 ? Math.max(0, (1 - eCeil / lCeil)) * 100 : 0;
 
   // Per-type grant per m² for windows (uniform across all m²)
-  const grantPerM2Win = (hasGrant() && fTot > 0 && qWinTot > 0)
-    ? grantReceived * fWin / (fTot * qWinTot)
+  const grantPerM2Win   = (hasGrant() && fTot > 0 && qWinTot > 0)
+    ? grantReceived * fWin   / (fTot * qWinTot)
     : 0;
+  const grantPerM2Doors = (hasGrant() && fTot > 0 && qDoors > 0)
+    ? grantReceived * fDoors / (fTot * qDoors)
+    : 0;
+  const eligDoors = hasDoors ? Math.max(0, Math.round((DOOR_PRICE - grantPerM2Doors) * qDoors)) : 0;
   document.getElementById('inp_elig_roof').value    = Math.round(eRoof);
   document.getElementById('inp_elig_ceiling').value = Math.round(eCeil);
   document.getElementById('inp_elig_sikminy').value = Math.round(eSimkiny);
-  document.getElementById('inp_elig_doors').value   = Math.round(eDoors);
+  document.getElementById('inp_elig_doors').value   = eligDoors;
   document.getElementById('inp_elig_win_a').value   = Math.max(0, Math.round((WIN_RATES.a - grantPerM2Win) * qWinA));
   document.getElementById('inp_elig_win_b').value   = Math.max(0, Math.round((WIN_RATES.b - grantPerM2Win) * qWinB));
   document.getElementById('inp_elig_win_c').value   = Math.max(0, Math.round((WIN_RATES.c - grantPerM2Win) * qWinC));
@@ -961,7 +966,7 @@ function calc() {{
   showRate('pv-rate-roof-row',    'pv-rate-roof',    hasRoof    ? qRoof    : 0, eRoof,    roofFloorHit);
   showRate('pv-rate-ceil-row',    'pv-rate-ceil',    hasCeil    ? qCeil    : 0, eCeil,    ceilFloorHit);
   showRate('pv-rate-sikminy-row', 'pv-rate-sikminy', hasSikminy ? qSimkiny : 0, eSimkiny, sikminyFloorHit);
-  showRate('pv-doors-row', 'pv-doors', hasDoors ? qDoors : 0, eDoors, false);
+  showRate('pv-doors-row', 'pv-doors', hasDoors ? qDoors : 0, eligDoors, false);
 
   const winOnly  = hasWin && !hasRoof && !hasCeil && !hasSikminy && !hasDoors;
   const splitVal = winOnly ? '80-20' : (getSplit() || '');
