@@ -81,7 +81,7 @@ else:
 # ── 3. Add smart button to res.partner form ───────────────────────────────────
 FORM_ARCH = f"""<data>
     <xpath expr="//div[@name='button_box']" position="inside">
-        <button name="{action_id}" type="action" class="oe_stat_button" icon="fa-download" string="Přílohy"/>
+        <button name="{action_id}" type="action" class="oe_stat_button" icon="fa-download" string="Stažení příloh"/>
     </xpath>
     <xpath expr="//field[@name='is_published']" position="attributes">
         <attribute name="invisible">True</attribute>
