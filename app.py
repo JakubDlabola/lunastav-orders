@@ -1625,9 +1625,10 @@ def download_partner_attachments(partner_id: int, key: str):
         raise HTTPException(status_code=404, detail='Kontakt nenalezen')
     partner_name = partner[0]['name']
 
+    # Include chatter attachments (message_id set) — "Dokumenty" count excludes
+    # those, but they're the files users attach via the chatter "Soubory" section.
     attachments = call('ir.attachment', 'search_read',
-                       [[('res_model', '=', 'res.partner'), ('res_id', '=', partner_id),
-                         ('type', '=', 'binary')]],
+                       [[('res_model', '=', 'res.partner'), ('res_id', '=', partner_id)]],
                        {'fields': ['name', 'datas', 'mimetype']})
     if not attachments:
         raise HTTPException(status_code=404, detail='Žádné přílohy nenalezeny')
