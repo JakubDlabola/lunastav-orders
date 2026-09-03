@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-09-03] — Dokončení tlačítka Stažení příloh
+- Tlačítko přejmenováno z „Přílohy" na „Stažení příloh" — na formuláři kontaktu i CRM příležitosti
+- Skryt button „Jít na Webovou stránku" (is_published, widget website_redirect_button) — tlačítko Stažení příloh se nyní zobrazuje přímo v button_boxu bez rozbalovacího Více
+- Oprava pádu endpointu pro jména s non-latin-1 znaky (např. Š): přidán flag `re.ASCII` do `re.sub` generujícího název ZIP souboru v hlavičce Content-Disposition
+
 ## [2026-09-03] — Oprava Railway URL + tlačítko „Přílohy" na CRM příležitosti
 - Opravena chybná URL `lunastav-production` → `lunastav-orders-production` v server action i docs
 - Endpoint přejmenován na `/download-attachments?model=<model>&record_id=<id>` — generický pro jakýkoli model
