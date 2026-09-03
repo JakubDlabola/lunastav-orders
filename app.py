@@ -1649,7 +1649,7 @@ def download_attachments(model: str, record_id: int, key: str):
             zf.writestr(fname, base64.b64decode(att['datas']))
     buf.seek(0)
 
-    safe_name = re.sub(r'[^\w\-]', '_', record_name)
+    safe_name = re.sub(r'[^\w\-]', '_', record_name, flags=re.ASCII)
     return StreamingResponse(
         buf,
         media_type='application/zip',
