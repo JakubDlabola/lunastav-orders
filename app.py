@@ -1611,24 +1611,24 @@ def _order_form_post_inner(
 # async def verify_post(sign_id: int, partner_id: int, token: str, code: str = Form(...)): ...
 
 
-@app.get('/download-partner-attachments')
-def download_partner_attachments(partner_id: int, key: str):
+@app.get('/download-attachments')
+def download_attachments(model: str, record_id: int, key: str):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=403, detail='Forbidden')
 
     uid, models = odoo_connect()
-    def call(model, method, args, kw={}):
-        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+    def call(odoo_model, method, args, kw={}):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, odoo_model, method, args, kw)
 
-    partner = call('res.partner', 'read', [[partner_id]], {'fields': ['name']})
-    if not partner:
-        raise HTTPException(status_code=404, detail='Kontakt nenalezen')
-    partner_name = partner[0]['name']
+    record = call(model, 'read', [[record_id]], {'fields': ['name']})
+    if not record:
+        raise HTTPException(status_code=404, detail='Záznam nenalezen')
+    record_name = record[0]['name']
 
-    # Include chatter attachments (message_id set) — "Dokumenty" count excludes
-    # those, but they're the files users attach via the chatter "Soubory" section.
+    # Includes chatter attachments — those have message_id set and are excluded from
+    # the Dokumenty smart-button count, but are real ir.attachment records.
     attachments = call('ir.attachment', 'search_read',
-                       [[('res_model', '=', 'res.partner'), ('res_id', '=', partner_id)]],
+                       [[('res_model', '=', model), ('res_id', '=', record_id)]],
                        {'fields': ['name', 'datas', 'mimetype']})
     if not attachments:
         raise HTTPException(status_code=404, detail='Žádné přílohy nenalezeny')
@@ -1640,7 +1640,6 @@ def download_partner_attachments(partner_id: int, key: str):
             if not att.get('datas'):
                 continue
             fname = att['name'] or 'priloha'
-            # deduplicate filenames
             if fname in seen:
                 seen[fname] += 1
                 base, _, ext = fname.rpartition('.')
@@ -1650,7 +1649,7 @@ def download_partner_attachments(partner_id: int, key: str):
             zf.writestr(fname, base64.b64decode(att['datas']))
     buf.seek(0)
 
-    safe_name = re.sub(r'[^\w\-]', '_', partner_name)
+    safe_name = re.sub(r'[^\w\-]', '_', record_name)
     return StreamingResponse(
         buf,
         media_type='application/zip',

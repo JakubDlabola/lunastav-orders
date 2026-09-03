@@ -1,7 +1,7 @@
 # LUNASTAV — Claude Instructions
 
 ## Repository
-Auto-deploys to Railway at `lunastav-production.up.railway.app` from the `main` branch.
+Auto-deploys to Railway at `lunastav-orders-production.up.railway.app` from the `main` branch.
 GitHub: `https://github.com/JakubDlabola/lunastav-orders.git`
 
 ## Rules for all Claude sessions

@@ -1,7 +1,7 @@
 # Uživatelská příručka — objednávkový formulář LUNASTAV
 
 ## Přístup k formuláři
-Otevřete `https://lunastav-production.up.railway.app/order/<ORDER_ID>?key=lunastav-smlouva-2025`
+Otevřete `https://lunastav-orders-production.up.railway.app/order/<ORDER_ID>?key=lunastav-smlouva-2025`
 
 Místo `<ORDER_ID>` doplňte číselné ID zakázky z Odoo.
 

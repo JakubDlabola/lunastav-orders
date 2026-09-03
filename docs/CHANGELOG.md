@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-09-03] — Oprava Railway URL + tlačítko „Přílohy" na CRM příležitosti
+- Opravena chybná URL `lunastav-production` → `lunastav-orders-production` v server action i docs
+- Endpoint přejmenován na `/download-attachments?model=<model>&record_id=<id>` — generický pro jakýkoli model
+- Tlačítko „Přílohy" přidáno i na formulář CRM příležitosti (crm.lead, server action id=1383, view id=4659)
+
 ## [2026-09-03] — Tlačítko „Přílohy" na kartě kontaktu
 - Nový endpoint Railway `GET /download-partner-attachments?partner_id=&key=` — stáhne všechny binární přílohy kontaktu jako ZIP soubor
 - Na formuláři kontaktu (res.partner) přidán smart button „Přílohy" (fa-download) — volá ir.actions.server id=1382, který vrátí act_url → Railway → stažení ZIPu v novém tabu

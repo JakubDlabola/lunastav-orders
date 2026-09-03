@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', 'contract_service', '.env'))
 URL, DB, USER, KEY = os.environ['ODOO_URL'], os.environ['ODOO_DB'], os.environ['ODOO_USER'], os.environ['ODOO_API_KEY']
 SERVICE_KEY = os.environ['SERVICE_KEY']
-RAILWAY_URL = 'https://lunastav-production.up.railway.app'
+RAILWAY_URL = 'https://lunastav-orders-production.up.railway.app'
 
 uid = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/common').authenticate(DB, USER, KEY, {})
 m   = xmlrpc.client.ServerProxy(f'{URL}/xmlrpc/2/object')
@@ -41,13 +41,25 @@ existing_action = call('ir.actions.server', 'search_read',
                        {'fields': ['id']})
 if existing_action:
     action_id = existing_action[0]['id']
-    print(f'Server action already exists: id={action_id}')
+    print(f'Server action already exists: id={action_id} — updating code URL...')
+    action_code = (
+        "action = {\n"
+        "    'type': 'ir.actions.act_url',\n"
+        f"    'url': '{RAILWAY_URL}/download-attachments?model=res.partner&record_id=' + str(record.id) + '&key={SERVICE_KEY}',\n"
+        "    'target': 'new',\n"
+        "}"
+    )
+    if apply:
+        call('ir.actions.server', 'write', [[action_id], {'code': action_code}])
+        print(f'  Updated server action id={action_id}')
+    else:
+        print(f'  (dry run — would update code to use {RAILWAY_URL})')
 else:
     # The code embeds SERVICE_KEY directly — server actions are admin-only in Odoo.
     action_code = (
         "action = {\n"
         "    'type': 'ir.actions.act_url',\n"
-        f"    'url': '{RAILWAY_URL}/download-partner-attachments?partner_id=' + str(record.id) + '&key={SERVICE_KEY}',\n"
+        f"    'url': '{RAILWAY_URL}/download-attachments?model=res.partner&record_id=' + str(record.id) + '&key={SERVICE_KEY}',\n"
         "    'target': 'new',\n"
         "}"
     )
