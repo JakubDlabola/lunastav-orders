@@ -11,7 +11,9 @@ from datetime import date
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+import zipfile
+
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from contract import generate_contract
 
@@ -181,7 +183,8 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
             (0, 0, {'role_id': company_role_id, 'partner_id': company_partner_id}),
         ],
     }
-    if client_name:      create_vals['x_client_name']     = client_name
+    if client_name:      create_vals['x_client_name']       = client_name
+    if client_partner_id: create_vals['x_client_partner_id'] = client_partner_id
     if crm_opportunity: create_vals['x_crm_opportunity'] = crm_opportunity
     if crm_tipar:       create_vals['x_crm_tipar']       = crm_tipar
     if crm_obchodnik:   create_vals['x_crm_obchodnik']   = crm_obchodnik
@@ -1606,6 +1609,52 @@ def _order_form_post_inner(
 #
 # @app.post('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
 # async def verify_post(sign_id: int, partner_id: int, token: str, code: str = Form(...)): ...
+
+
+@app.get('/download-partner-attachments')
+def download_partner_attachments(partner_id: int, key: str):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    uid, models = odoo_connect()
+    def call(model, method, args, kw={}):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+
+    partner = call('res.partner', 'read', [[partner_id]], {'fields': ['name']})
+    if not partner:
+        raise HTTPException(status_code=404, detail='Kontakt nenalezen')
+    partner_name = partner[0]['name']
+
+    attachments = call('ir.attachment', 'search_read',
+                       [[('res_model', '=', 'res.partner'), ('res_id', '=', partner_id),
+                         ('type', '=', 'binary')]],
+                       {'fields': ['name', 'datas', 'mimetype']})
+    if not attachments:
+        raise HTTPException(status_code=404, detail='Žádné přílohy nenalezeny')
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        seen = {}
+        for att in attachments:
+            if not att.get('datas'):
+                continue
+            fname = att['name'] or 'priloha'
+            # deduplicate filenames
+            if fname in seen:
+                seen[fname] += 1
+                base, _, ext = fname.rpartition('.')
+                fname = f'{base}_{seen[fname]}.{ext}' if ext else f'{fname}_{seen[fname]}'
+            else:
+                seen[fname] = 0
+            zf.writestr(fname, base64.b64decode(att['datas']))
+    buf.seek(0)
+
+    safe_name = re.sub(r'[^\w\-]', '_', partner_name)
+    return StreamingResponse(
+        buf,
+        media_type='application/zip',
+        headers={'Content-Disposition': f'attachment; filename="prilohy_{safe_name}.zip"'},
+    )
 
 
 @app.get('/health')

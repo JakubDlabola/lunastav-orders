@@ -1,5 +1,21 @@
 # Changelog
 
+## [2026-09-03] — Tlačítko „Přílohy" na kartě kontaktu
+- Nový endpoint Railway `GET /download-partner-attachments?partner_id=&key=` — stáhne všechny binární přílohy kontaktu jako ZIP soubor
+- Na formuláři kontaktu (res.partner) přidán smart button „Přílohy" (fa-download) — volá ir.actions.server id=1382, který vrátí act_url → Railway → stažení ZIPu v novém tabu
+- Přílohy jsou deduplikovány (pokud mají více souborů stejný název)
+
+## [2026-09-02] — Sloupec Kontakt v Podpisech a CRM s klikatelným avatarem
+- Widget `many2one_avatar_user` funguje i na polích many2one → res.partner (nejen res.users) a jeho click handler obchází interceptor řádku — tím se odblokoval klikatelný avatar
+- Sloupec přejmenován z „Klient" na „Kontakt" v přehledu Podpisů (sign.request list view id=4654)
+- Nový sloupec „Kontakt" přidán do přehledu CRM příležitostí (crm.lead list view id=4655) — zobrazuje `partner_id` s `widget="many2one_avatar_user"`, kliknutí na avatar otevře kontaktní stránku
+
+## [2026-09-02] — Klient jako klikatelný odkaz v přehledu podpisů
+- `x_client_partner_id` (many2one → res.partner, uložené, id=30420) přidáno na sign.request; doplněno zpětně do 95 záznamů z role Objednatel (role_id=15)
+- Sloupec Klient v přehledu podpisů je nyní klikatelný odkaz přímo na kontakt v Odoo — vyžaduje tři obezličky sign_list validace: (a) `column_invisible` companion pro many2one, (b) `x_client_name` char musí být v kombinovaném arch (skrytý), (c) view musí být nový CREATE, ne WRITE na stávající
+- Ve formuláři podpisu je `x_client_partner_id` přidáno před pole Dokument jako záložní klikatelný odkaz
+- `_create_sign_request()` nyní zapisuje `x_client_partner_id` při vytváření nových žádostí
+
 ## [2026-09-02] — CRM fáze Podepsáno při podpisu klienta
 - Automatizace 58 (LUNASTAV: Dilci podpis) rozšířena: po podpisu klienta (Objednatel, role=15) se propojená CRM příležitost přesune do fáze Podepsáno (id=6)
 - Chráněné fáze: Vyhráno (id=4) a Žádost o dotaci schválená (id=7) — fáze se nikdy neposune zpět
