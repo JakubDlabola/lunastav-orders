@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-09-07] — Oprava kalkulace ceny pro Dveře a text Popisu díla
+- Oprava: při výběru pouze typu Dveře se nezobrazoval náhled ceny a formulář hlásil „Vypočítejte cenu před odesláním" — `hasDoors` bylo v `calc()` deklarováno až za časným `return`, takže `inp_elig_doors` zůstalo 0
+- Popis díla pro dveře změněn na „Výměna dveří o výměře X m²." (místo verbose věty)
+
 ## [2026-09-03] — Dokončení tlačítka Stažení příloh
 - Tlačítko přejmenováno z „Přílohy" na „Stažení příloh" — na formuláři kontaktu i CRM příležitosti
 - Skryt button „Jít na Webovou stránku" (is_published, widget website_redirect_button) — tlačítko Stažení příloh se nyní zobrazuje přímo v button_boxu bez rozbalovacího Více
