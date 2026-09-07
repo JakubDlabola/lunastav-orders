@@ -736,7 +736,7 @@ function updatePopisDila() {{
 
   if (hasDoors) {{
     const qty = document.getElementById('qty_m2_doors').value || '';
-    if (qty) lines.push('Na ploše ' + qty + ' m² bude zhotovitelem provedena výměna dveří.');
+    if (qty) lines.push('Výměna dveří o výměře ' + qty + ' m².');
   }}
 
   const body = lines.slice(1).join(' ');
@@ -825,8 +825,9 @@ function calc() {{
   const hasRoof    = document.getElementById('chk_roof').checked;
   const hasCeil    = document.getElementById('chk_ceiling').checked;
   const hasSikminy = document.getElementById('chk_sikminy').checked;
+  const hasDoors   = document.getElementById('chk_doors').checked;
   const hasWin     = document.getElementById('chk_windows').checked;
-  if (!hasRoof && !hasCeil && !hasSikminy && !hasWin) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
+  if (!hasRoof && !hasCeil && !hasSikminy && !hasDoors && !hasWin) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
   const qRoof    = hasRoof    ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 0;
   const qCeil    = hasCeil    ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 0;
@@ -840,7 +841,6 @@ function calc() {{
   const lSimkiny = LISTED.roof * qSimkiny;
   const lWinA    = WIN_RATES.a * qWinA, lWinB = WIN_RATES.b * qWinB, lWinC = WIN_RATES.c * qWinC;
   const lWin     = lWinA + lWinB + lWinC;
-  const hasDoors = document.getElementById('chk_doors').checked;
   const qDoors   = hasDoors ? (parseFloat(document.getElementById('qty_m2_doors').value) || 0) : 0;
   const DOOR_PRICE = 23277.77; // Kc/m2 incl. VAT, net (after cosmetic disc)
   const eDoors   = hasDoors ? Math.round(DOOR_PRICE * qDoors) : 0;
