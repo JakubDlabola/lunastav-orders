@@ -1313,9 +1313,9 @@ function historySearch() {{
         return;
       }}
       el.innerHTML = data.map(function(r) {{
-        return '<div onclick="historyLoad(\'' + _escH(r.log_id) + '\')"' +
+        return '<div onclick="historyLoad(\\'' + _escH(r.log_id) + '\\')"' +
           ' style="padding:10px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;border-radius:4px;"' +
-          ' onmouseover="this.style.background=\'#fffbf0\'" onmouseout="this.style.background=\'\'">' +
+          ' onmouseover="this.style.background=\\'#fffbf0\\'" onmouseout="this.style.background=\\'\\'">' +
           '<div style="font-weight:bold;font-size:14px;">' + _escH(r.order_name) +
           ' <span style="font-weight:normal;color:#888;font-size:12px;">' + _escH((r.created_at || '').slice(0,10)) + '</span></div>' +
           '<div style="font-size:12px;color:#555;margin-top:2px;">' + _escH(r.partner_name) +
