@@ -10,7 +10,7 @@ import xmlrpc.client
 from datetime import date
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import FastAPI, Form, HTTPException, Query
 import zipfile
 
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -2160,21 +2160,6 @@ def history_load(log_id: str, key: str = Query(...)):
         pass
     raise HTTPException(status_code=404, detail='Entry not found')
 
-
-@app.post('/order-form/import-log')
-async def import_log(request: Request, key: str = Query(...)):
-    from fastapi.responses import JSONResponse
-    if key != SERVICE_KEY:
-        raise HTTPException(status_code=403, detail='Forbidden')
-    body = await request.body()
-    lines = [l for l in body.decode('utf-8').splitlines() if l.strip()]
-    written = 0
-    with _log_lock:
-        with open(_LOG_FILE, 'a', encoding='utf-8') as f:
-            for line in lines:
-                f.write(line + '\n')
-                written += 1
-    return JSONResponse({'written': written, 'log_file': _LOG_FILE})
 
 
 # @app.get('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
