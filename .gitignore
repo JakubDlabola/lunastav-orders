@@ -1,3 +1,4 @@
 .env
 __pycache__/
 *.pyc
+orders_log.jsonl
