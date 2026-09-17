@@ -1,5 +1,30 @@
 # Changelog
 
+## [2026-09-17] — Šablony zakázek (historie)
+- Tlačítko „Načíst šablonu" v záhlaví formuláře otevírá overlay s vyhledáváním v logu zakázek
+- Vyhledávání (debounce 300 ms) prohledává: číslo zakázky, jméno klienta, příležitost, obchodník
+- Načtení šablony zkopíruje pracovní parametry (typy, materiály, množství, termín, dotace, vlastní položky) ale **ne** kontaktní údaje klienta — formulář zůstává namířen na aktuální zakázku
+- Log zakázek: `orders_log.jsonl` na Railway persistent volume (`LOG_DIR` env var, fallback: adresář skriptu)
+- Nové endpointy: `GET /order-form/history/search`, `GET /order-form/history/load/{log_id}`
+- Skript `backfill_log.py` — zpětné doplnění zakázek z Odoo (identifikace přes přílohu Smlouva_*.pdf, rekonstrukce parametrů z řádků zakázky)
+- Suffix produktů: A = Střecha, B = Strop, C = Šikminy — backfill i formulář správně rozlišuje všechny tři typy
+- Backfill: tloušťky a textová pole (termin, popis díla) zůstávají prázdné — nelze rekonstruovat z řádků zakázky
+
+## [2026-09-16] — Náhled PDF před potvrzením objednávky
+- Po odeslání formuláře se zobrazí stránka s iframe náhledem vygenerované smlouvy (PDF)
+- Dvě akce: „Zpět na formulář" (obnoví všechna pole včetně vlastních položek) a „Potvrdit a odeslat k podpisu"
+- Nic se nezapisuje do Odoo (žádná příloha, žádný podpisový požadavek, žádný e-mail) dokud uživatel nepotvrdí
+- Draft uložen v paměti serveru pod UUID tokenem (TTL 2 hodiny), automaticky čištěn
+- Nové endpointy: `POST /order-form/confirm`, `GET /order-form/preview-pdf/{token}`
+- Skrytý parametr `draft` na GET `/order-form` — JS pre-fill obnoví celý stav formuláře ze snapshotu
+
+## [2026-09-16] — Vlastní položky v objednávkovém formuláři
+- Nová sekce „Vlastní položky" ve formuláři — uživatel může přidávat libovolný počet řádků s popisem, množstvím, měrnou jednotkou (ks / m / m²) a jednotkovou cenou bez DPH
+- Vlastní položky se zobrazují v hlavní sekci produktů zakázky spolu s ostatními řádky; DPH 12 % je přidáno automaticky
+- Bez slevy, bez dotace — cena zadaná uživatelem je cenou k úhradě
+- Přidán nový produkt v Odoo (kód CUSTOM, id=80, typ=service, 12% G) pro záznamy objednávkových řádků; UoM se nastavuje per-řádek dle výběru uživatele
+- Vytvořen setup skript `setup_custom_product.py` pro prvotní vytvoření produktu
+
 ## [2026-09-07] — Oprava kalkulace ceny pro Dveře a text Popisu díla
 - Oprava: při výběru pouze typu Dveře se nezobrazoval náhled ceny a formulář hlásil „Vypočítejte cenu před odesláním" — `hasDoors` bylo v `calc()` deklarováno až za časným `return`, takže `inp_elig_doors` zůstalo 0
 - Popis díla pro dveře změněn na „Výměna dveří o výměře X m²." (místo verbose věty)

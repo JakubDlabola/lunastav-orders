@@ -27,6 +27,23 @@ SERVICE_KEY  = os.environ['SERVICE_KEY']
 
 app = FastAPI(title='LUNASTAV Order Service')
 
+_drafts: dict = {}  # token -> draft data for preview/confirm flow
+
+import os as _os, threading as _threading
+_LOG_DIR  = _os.environ.get('LOG_DIR', _os.path.dirname(_os.path.abspath(__file__)))
+_LOG_FILE = _os.path.join(_LOG_DIR, 'orders_log.jsonl')
+_log_lock = _threading.Lock()
+
+def _append_log_entry(entry: dict) -> None:
+    import json as _json2
+    try:
+        line = _json2.dumps(entry, ensure_ascii=False) + '\n'
+        with _log_lock:
+            with open(_LOG_FILE, 'a', encoding='utf-8') as _lf:
+                _lf.write(line)
+    except Exception as _le:
+        logging.error(f'Log write failed: {_le}')
+
 _SIGN_SIG_TYPE_ID        = 1                          # Signature field type id
 _SIGN_COMPANY_PARTNER_ID = 3                          # Lukáš Najman (LUNASTAV signer)
 _SIGN_COMPANY_EMAIL      = 'lukas.najman@lunastav.cz'
@@ -283,7 +300,7 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
 
 
 @app.get('/order-form', response_class=HTMLResponse)
-def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int = Query(0)):
+def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int = Query(0), draft: str = Query(None)):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -324,6 +341,20 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
             m = re.search(r'->\$(\d+)', lead['name'])
             if m:
                 remaining_grant_k = str(int(m.group(1)) * 1000)
+
+    import json as _json
+    _draft_form = _drafts.get(draft, {}).get('form') if draft else None
+    if _draft_form:
+        if _draft_form.get('client_name'):   partner_name   = _draft_form['client_name']
+        if _draft_form.get('client_email'):  partner_email  = _draft_form['client_email']
+        if _draft_form.get('client_phone'):  partner_phone  = _draft_form['client_phone']
+        if _draft_form.get('client_street'): partner_street = _draft_form['client_street']
+        if _draft_form.get('client_zip'):    partner_zip    = _draft_form['client_zip']
+        if _draft_form.get('client_city'):   partner_city   = _draft_form['client_city']
+        if _draft_form.get('client_dob'):    partner_dob    = _draft_form['client_dob']
+        if 'remaining_grant_k' in _draft_form:
+            remaining_grant_k = _draft_form['remaining_grant_k']
+    draft_json = _json.dumps(_draft_form, ensure_ascii=True).replace('</', '<\\/') if _draft_form else 'null'
 
     return f"""<!doctype html>
 <html lang="cs">
@@ -374,8 +405,17 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 </head>
 <body>
 <div class="card">
-  <h2>Nová objednávka</h2>
-  <div class="subtitle">{partner_name} &middot; {order['name']}</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px;">
+    <div>
+      <h2 style="margin:0 0 2px;">Nová objednávka</h2>
+      <div class="subtitle" style="margin-bottom:0;">{partner_name} &middot; {order['name']}</div>
+    </div>
+    <button type="button" onclick="openHistoryOverlay()"
+            style="font-size:13px;padding:7px 14px;border:1px solid #c8a840;border-radius:6px;
+                   background:#fffbf0;color:#7a5c00;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-top:4px;">
+      &#128203; Načíst šablonu
+    </button>
+  </div>
   {'<div style="background:#c00;color:#fff;font-size:12px;font-weight:bold;text-align:center;padding:4px 8px;border-radius:4px;margin-bottom:12px;">TEST REŽIM — podpis jde Tomáši Najmanovi</div>' if test else ''}
 
   <form method="post" action="/order-form" id="mainForm">
@@ -392,6 +432,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
     <input type="hidden" name="eligible_sikminy"    id="inp_elig_sikminy" value="0">
     <input type="hidden" name="eligible_doors"      id="inp_elig_doors"   value="0">
+    <input type="hidden" name="custom_items" id="inp_custom_items" value="[]">
+    <input type="hidden" name="grant_enabled_val" id="inp_grant_enabled_val" value="1">
+    <input type="hidden" name="remaining_grant_k_val" id="inp_remaining_grant_k_val" value="">
+    <input type="hidden" name="termin_days_val" id="inp_termin_days_val" value="">
+    <input type="hidden" name="termin_cond_val" id="inp_termin_cond_val" value="">
 
     <span class="field-label">Kontakt</span>
     <div style="display:grid;gap:8px;margin-bottom:20px;">
@@ -537,6 +582,13 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
       </div>
     </div>
 
+    <span class="field-label" style="margin-top:20px;">Vlastní položky</span>
+    <div id="custom-items-list" style="margin-bottom:8px;"></div>
+    <button type="button" onclick="addCustomItem()"
+            style="font-size:13px;padding:6px 14px;border:1px dashed #aaa;border-radius:6px;background:#fafafa;cursor:pointer;width:100%;margin-bottom:16px;">
+      + Přidat vlastní položku
+    </button>
+
     <span class="field-label">Zbývající dotace (Kč)</span>
     <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1000" oninput="calc()" placeholder="bez omezení">
 
@@ -551,6 +603,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
       <div class="preview-row hidden" id="pv-pochozi-row"><span>Pochozí plocha / lávka</span><span id="pv-pochozi">—</span></div>
+      <div class="preview-row hidden" id="pv-custom-row"><span>Vlastní položky</span><span id="pv-custom">—</span></div>
       <div class="preview-row total"><span>Celkem k úhradě</span><span id="pv-total">—</span></div>
       <div class="preview-row hidden" id="pv-zaloha-row"><span id="pv-zaloha-label">Záloha</span><span id="pv-zaloha">—</span></div>
       <div class="preview-row hidden" id="pv-doplatek-row"><span id="pv-doplatek-label">Doplatek</span><span id="pv-doplatek">—</span></div>
@@ -821,6 +874,24 @@ function updateTermin() {{
   if (auto) field.value = auto;
 }}
 
+function addCustomItem() {{
+  const row = document.createElement('div');
+  row.className = 'custom-item-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 90px 120px 34px;gap:6px;margin-bottom:6px;align-items:center;';
+  const iStyle = 'padding:8px 8px;border:1px solid #ddd;border-radius:6px;font-size:14px;width:100%;box-sizing:border-box;';
+  row.innerHTML =
+    '<input class="ci-desc" type="text" placeholder="Popis" oninput="calc()" style="' + iStyle + '">' +
+    '<input class="ci-qty" type="number" min="0.01" step="0.01" placeholder="Mn." oninput="calc()" style="' + iStyle + 'text-align:right;">' +
+    '<select class="ci-unit" onchange="calc()" style="' + iStyle + 'background:#fff;">' +
+      '<option value="ks">ks</option>' +
+      '<option value="m">m</option>' +
+      '<option value="m2">m²</option>' +
+    '</select>' +
+    '<input class="ci-price" type="number" min="0" step="0.01" placeholder="Kč/jedn. bez DPH" oninput="calc()" style="' + iStyle + 'text-align:right;">' +
+    '<button type="button" onclick="this.parentNode.remove();calc();" style="width:32px;height:32px;border:1px solid #ddd;border-radius:6px;background:#fff8f8;cursor:pointer;font-size:18px;color:#c00;padding:0;">×</button>';
+  document.getElementById('custom-items-list').appendChild(row);
+}}
+
 function calc() {{
   const hasRoof    = document.getElementById('chk_roof').checked;
   const hasCeil    = document.getElementById('chk_ceiling').checked;
@@ -931,7 +1002,16 @@ function calc() {{
   document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice);
   document.getElementById('pv-pochozi-row').classList.toggle('hidden', !hasCeil || (q5100 === 0 && q5101 === 0));
 
-  const grandTotal = eTotal + DOPRAVA + pochoziPrice + blindsCost + netsCost;
+  let customTotal = 0;
+  document.querySelectorAll('#custom-items-list .custom-item-row').forEach(function(row) {{
+    const qty   = parseFloat(row.querySelector('.ci-qty').value)   || 0;
+    const price = parseFloat(row.querySelector('.ci-price').value) || 0;
+    customTotal += Math.round(qty * price * 1.12);
+  }});
+  document.getElementById('pv-custom-row').classList.toggle('hidden', customTotal === 0);
+  if (customTotal > 0) document.getElementById('pv-custom').textContent = fmt(customTotal);
+
+  const grandTotal = eTotal + DOPRAVA + pochoziPrice + blindsCost + netsCost + customTotal;
   const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
   document.getElementById('pv-disc').textContent = dTotal.toFixed(1) + ' %';
   document.getElementById('pv-disc-row').classList.toggle('hidden', dTotal < 0.5);
@@ -1083,7 +1163,216 @@ function onBlindsNetsChange(which) {{
 }}
 
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
+document.getElementById('mainForm').addEventListener('submit', function() {{
+  const items = [];
+  document.querySelectorAll('#custom-items-list .custom-item-row').forEach(function(row) {{
+    const desc  = (row.querySelector('.ci-desc').value  || '').trim();
+    const qty   = parseFloat(row.querySelector('.ci-qty').value)   || 0;
+    const unit  = row.querySelector('.ci-unit').value;
+    const price = parseFloat(row.querySelector('.ci-price').value) || 0;
+    if (desc && qty > 0 && price > 0) items.push({{desc: desc, qty: qty, unit: unit, price: price}});
+  }});
+  document.getElementById('inp_custom_items').value = JSON.stringify(items);
+  document.getElementById('inp_grant_enabled_val').value = document.getElementById('grant_enabled').checked ? '1' : '';
+  document.getElementById('inp_remaining_grant_k_val').value = document.getElementById('remaining_grant_k').value || '';
+  const _td = document.querySelector('input[name="termin_days"]:checked');
+  document.getElementById('inp_termin_days_val').value = _td ? _td.value : '';
+  const _tc = document.querySelector('input[name="termin_cond"]:checked');
+  document.getElementById('inp_termin_cond_val').value = _tc ? _tc.value : '';
+}});
+
+function prefillForm(d, templateMode) {{
+  if (!d) return;
+  function setVal(id, val) {{
+    const el = document.getElementById(id);
+    if (el && val !== '' && val !== undefined && val !== null) el.value = val;
+  }}
+  function radio(name, val) {{
+    if (!val) return;
+    document.querySelectorAll('input[name="' + name + '"]').forEach(function(inp) {{
+      if (inp.value === val) inp.checked = true;
+    }});
+  }}
+  function manualField(id, val) {{
+    if (!val) return;
+    _manualFields.add(id);
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = val;
+    el.removeAttribute('readonly');
+    const btn = document.getElementById('edit-btn-' + id);
+    if (btn) btn.classList.add('active');
+  }}
+  if (d.has_roof)    document.getElementById('chk_roof').checked    = true;
+  if (d.has_ceiling) document.getElementById('chk_ceiling').checked = true;
+  if (d.has_sikminy) document.getElementById('chk_sikminy').checked = true;
+  if (d.has_doors)   document.getElementById('chk_doors').checked   = true;
+  if (d.has_windows) document.getElementById('chk_windows').checked = true;
+  onTypesChange();
+  radio('material_roof',    d.material_roof);
+  radio('material_ceiling', d.material_ceiling);
+  radio('material_sikminy', d.material_sikminy);
+  radio('split',            d.split);
+  radio('termin_zalohy_2',  d.termin_zalohy_2);
+  setVal('qty_m2_roof',       d.qty_m2_roof);
+  setVal('qty_m2_ceiling',    d.qty_m2_ceiling);
+  setVal('qty_m2_sikminy',    d.qty_m2_sikminy);
+  setVal('qty_m2_doors',      d.qty_m2_doors);
+  setVal('qty_win_a',         d.qty_win_a);
+  setVal('qty_win_b',         d.qty_win_b);
+  setVal('qty_win_c',         d.qty_win_c);
+  setVal('qty_blinds',        d.qty_blinds);
+  setVal('qty_nets',          d.qty_nets);
+  setVal('qty_5100',          d.qty_5100);
+  setVal('qty_5101',          d.qty_5101);
+  setVal('thickness_roof',    d.thickness_roof);
+  setVal('thickness_ceiling', d.thickness_ceiling);
+  setVal('thickness_sikminy', d.thickness_sikminy);
+  if (!templateMode) {{
+    setVal('client_name',   d.client_name);
+    setVal('client_street', d.client_street);
+    setVal('client_zip',    d.client_zip);
+    setVal('client_city',   d.client_city);
+    setVal('client_email',  d.client_email);
+    setVal('client_phone',  d.client_phone);
+    setVal('client_dob',    d.client_dob);
+    if (d.addr_same === false) {{
+      const cb = document.getElementById('addr_same');
+      if (cb) {{ cb.checked = false; document.getElementById('addr-custom').classList.remove('hidden'); }}
+      setVal('adresa_realizace', d.adresa_realizace);
+    }}
+  }}
+  if (d.grant_enabled === false) document.getElementById('grant_enabled').checked = false;
+  const grkEl = document.getElementById('remaining_grant_k');
+  if (grkEl) grkEl.value = d.remaining_grant_k !== undefined ? d.remaining_grant_k : grkEl.value;
+  if (d.has_blinds) {{
+    document.getElementById('chk_blinds').checked = true;
+    document.getElementById('blinds-qty-section').classList.remove('hidden');
+  }}
+  if (d.has_nets) {{
+    document.getElementById('chk_nets').checked = true;
+    document.getElementById('nets-qty-section').classList.remove('hidden');
+  }}
+  ['extra_5000a','extra_5000b','extra_5000c'].forEach(function(n) {{
+    if (d[n]) {{ const el = document.querySelector('input[name="' + n + '"]'); if (el) el.checked = true; }}
+  }});
+  if (d.custom_items && d.custom_items !== '[]') {{
+    try {{
+      JSON.parse(d.custom_items).forEach(function(item) {{
+        addCustomItem();
+        const rows = document.querySelectorAll('#custom-items-list .custom-item-row');
+        const row = rows[rows.length - 1];
+        if (row) {{
+          row.querySelector('.ci-desc').value  = item.desc  || '';
+          row.querySelector('.ci-qty').value   = item.qty   || '';
+          row.querySelector('.ci-unit').value  = item.unit  || 'ks';
+          row.querySelector('.ci-price').value = item.price || '';
+        }}
+      }});
+    }} catch(e) {{}}
+  }}
+  calc();
+  if (d.termin_dokonceni) manualField('termin_dokonceni', d.termin_dokonceni);
+  else {{ radio('termin_days', d.termin_days); radio('termin_cond', d.termin_cond); updateTermin(); }}
+  if (d.popis_dila) manualField('popis_dila', d.popis_dila); else updatePopisDila();
+  if (d.stavebni_pripravenost) manualField('stavebni_pripravenost', d.stavebni_pripravenost); else updateStavebni();
+  checkSubmit();
+}}
+(function() {{ prefillForm({draft_json}); }})();
+
+const _historyKey = '{key}';
+function openHistoryOverlay() {{
+  const ov = document.getElementById('history-overlay');
+  ov.style.display = 'flex';
+  const inp = document.getElementById('history-search-input');
+  inp.value = '';
+  historySearch();
+  setTimeout(function() {{ inp.focus(); }}, 60);
+}}
+function closeHistoryOverlay() {{
+  document.getElementById('history-overlay').style.display = 'none';
+}}
+let _historyTimer = null;
+function historySearchDebounced() {{
+  clearTimeout(_historyTimer);
+  _historyTimer = setTimeout(historySearch, 300);
+}}
+function _escH(s) {{
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}}
+function historySearch() {{
+  const q = (document.getElementById('history-search-input').value || '').trim();
+  const el = document.getElementById('history-results');
+  el.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:20px 0;">Načítám…</p>';
+  fetch('/order-form/history/search?key=' + encodeURIComponent(_historyKey) + '&q=' + encodeURIComponent(q))
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      if (!data.length) {{
+        el.innerHTML = '<p style="color:#aaa;font-size:13px;text-align:center;padding:20px 0;">' +
+          (q ? 'Žádné výsledky pro „' + _escH(q) + '“.' : 'Log je prázdný.') + '</p>';
+        return;
+      }}
+      el.innerHTML = data.map(function(r) {{
+        return '<div onclick="historyLoad(\'' + _escH(r.log_id) + '\')"' +
+          ' style="padding:10px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;border-radius:4px;"' +
+          ' onmouseover="this.style.background=\'#fffbf0\'" onmouseout="this.style.background=\'\'">' +
+          '<div style="font-weight:bold;font-size:14px;">' + _escH(r.order_name) +
+          ' <span style="font-weight:normal;color:#888;font-size:12px;">' + _escH((r.created_at || '').slice(0,10)) + '</span></div>' +
+          '<div style="font-size:12px;color:#555;margin-top:2px;">' + _escH(r.partner_name) +
+          (r.opportunity_name ? ' &middot; ' + _escH(r.opportunity_name) : '') + '</div>' +
+          (r.salesperson ? '<div style="font-size:12px;color:#aaa;">' + _escH(r.salesperson) + '</div>' : '') +
+          '</div>';
+      }}).join('');
+    }})
+    .catch(function() {{
+      el.innerHTML = '<p style="color:#c55;font-size:13px;text-align:center;padding:20px 0;">Chyba při načítání.</p>';
+    }});
+}}
+function historyLoad(logId) {{
+  fetch('/order-form/history/load/' + encodeURIComponent(logId) + '?key=' + encodeURIComponent(_historyKey))
+    .then(function(r) {{
+      if (!r.ok) throw new Error('not found');
+      return r.json();
+    }})
+    .then(function(form) {{
+      closeHistoryOverlay();
+      ['chk_roof','chk_ceiling','chk_sikminy','chk_doors','chk_windows','chk_blinds','chk_nets'].forEach(function(id) {{
+        const el = document.getElementById(id); if (el) el.checked = false;
+      }});
+      onTypesChange();
+      document.getElementById('custom-items-list').innerHTML = '';
+      ['extra_5000a','extra_5000b','extra_5000c'].forEach(function(n) {{
+        const el = document.querySelector('input[name="' + n + '"]'); if (el) el.checked = false;
+      }});
+      prefillForm(form, true);
+    }})
+    .catch(function() {{
+      alert('Nepodařilo se načíst šablonu.');
+    }});
+}}
+document.addEventListener('DOMContentLoaded', function() {{
+  document.getElementById('history-overlay').addEventListener('click', function(e) {{
+    if (e.target === this) closeHistoryOverlay();
+  }});
+}});
 </script>
+<div id="history-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:10px;padding:24px;width:min(96vw,560px);max-height:80vh;
+              display:flex;flex-direction:column;box-shadow:0 4px 24px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <strong style="font-size:16px;">Na&#269;&#237;st &#353;ablonu ze star&#353;&#237; zak&#225;zky</strong>
+      <button type="button" onclick="closeHistoryOverlay()"
+              style="font-size:22px;line-height:1;border:none;background:none;cursor:pointer;color:#888;padding:0 4px;">&times;</button>
+    </div>
+    <input type="text" id="history-search-input"
+           placeholder="Hledat&#8230; zak&#225;zka, klient, p&#345;&#237;le&#382;itost, obchodn&#237;k"
+           oninput="historySearchDebounced()" autocomplete="off"
+           style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;
+                  margin-bottom:10px;box-sizing:border-box;">
+    <div id="history-results" style="overflow-y:auto;flex:1;min-height:80px;max-height:50vh;"></div>
+  </div>
+</div>
 </body>
 </html>"""
 
@@ -1144,6 +1433,11 @@ def order_form_post(
     client_email: str = Form(''),
     client_phone: str = Form(''),
     client_dob: str = Form(''),
+    custom_items: str = Form('[]'),
+    grant_enabled_val: str = Form('1'),
+    remaining_grant_k_val: str = Form(''),
+    termin_days_val: str = Form(''),
+    termin_cond_val: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -1178,6 +1472,11 @@ def order_form_post(
             client_name=client_name, client_street=client_street, client_zip=client_zip,
             client_city=client_city, client_email=client_email, client_phone=client_phone,
             client_dob=client_dob,
+            custom_items=custom_items,
+            grant_enabled_val=grant_enabled_val,
+            remaining_grant_k_val=remaining_grant_k_val,
+            termin_days_val=termin_days_val,
+            termin_cond_val=termin_cond_val,
         )
     except HTTPException:
         raise
@@ -1214,6 +1513,11 @@ def _order_form_post_inner(
     client_name, client_street, client_zip,
     client_city, client_email, client_phone,
     client_dob,
+    custom_items='[]',
+    grant_enabled_val='1',
+    remaining_grant_k_val='',
+    termin_days_val='',
+    termin_cond_val='',
 ):
     uid, models = odoo_connect()
 
@@ -1298,7 +1602,7 @@ def _order_form_post_inner(
         }))
 
     if has_sikminy and material_sikminy:
-        ref = REF_MAP[material_sikminy] + 'A'
+        ref = REF_MAP[material_sikminy] + 'C'
         qty = float(qty_m2_sikminy or 0)
         prods = call('product.product', 'search_read',
                      [[['default_code', '=', ref]]], {'fields': ['id', 'name'], 'limit': 1})
@@ -1419,7 +1723,37 @@ def _order_form_post_inner(
 
     blinds_cost = round(1000 * (float(qty_blinds or 0) if has_blinds else 0.0))
     nets_cost   = round(1000 * (float(qty_nets   or 0) if has_nets   else 0.0))
-    total = eligible_roof + eligible_ceiling + eligible_sikminy + eligible_doors + eligible_win_a + eligible_win_b + eligible_win_c + blinds_cost + nets_cost + doprava_price + pochozi_total_incl
+    import json as _json
+    custom_items_list = []
+    try:
+        custom_items_list = _json.loads(custom_items) if custom_items else []
+    except Exception:
+        pass
+    UOM_MAP = {'ks': 1, 'm': 9, 'm2': 11}
+    if custom_items_list:
+        custom_prod = call('product.product', 'search_read',
+                           [[['default_code', '=', 'CUSTOM']]], {'fields': ['id'], 'limit': 1})
+        if not custom_prod:
+            raise HTTPException(status_code=400, detail='Produkt [CUSTOM] nenalezen v Odoo. Spus\u0165te setup_custom_product.py.')
+        custom_prod_id = custom_prod[0]['id']
+        for item in custom_items_list:
+            item_qty   = float(item.get('qty')   or 0)
+            item_price = float(item.get('price') or 0)
+            item_uom   = UOM_MAP.get(item.get('unit', 'ks'), 1)
+            if item_qty > 0 and item_price > 0:
+                order_lines.append((0, 0, {
+                    'product_id':      custom_prod_id,
+                    'name':            item.get('desc') or 'Vlastn\u00ed polo\u017eka',
+                    'product_uom_qty': item_qty,
+                    'product_uom':     item_uom,
+                    'price_unit':      item_price,
+                    'discount':        0,
+                }))
+    custom_total_incl = round(sum(
+        float(item.get('qty') or 0) * float(item.get('price') or 0) * TAX_RATE
+        for item in custom_items_list
+    ))
+    total = eligible_roof + eligible_ceiling + eligible_sikminy + eligible_doors + eligible_win_a + eligible_win_b + eligible_win_c + blinds_cost + nets_cost + doprava_price + pochozi_total_incl + custom_total_incl
     # eligible_win values are the net client cost (listed price minus grant/m²), not the full
     # contract price. Restore the full listed price for záloha/doplatek and client_pays.
     if has_windows:
@@ -1512,9 +1846,7 @@ def _order_form_post_inner(
             patch['x_studio_datum_narozeni'] = f'{y}-{m.zfill(2)}-{d.zfill(2)}'
         except Exception:
             pass
-    if patch:
-        call('res.partner', 'write', [[partner_id_val], patch])
-        partner.update(patch)
+    partner.update(patch)  # apply locally for PDF; Odoo write deferred to confirm
     if not partner.get('email') or '@' not in partner['email']:
         raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání smlouvy k podpisu.')
     lines = call('sale.order.line', 'read', [updated['order_line']], {'fields': [
@@ -1525,6 +1857,118 @@ def _order_form_post_inner(
     _client_name = partner.get('name', '')
     _doc_prefix = f'{_client_name} - {updated["name"]}' if _client_name else updated['name']
     filename = f"Smlouva_{_doc_prefix}.pdf"
+
+    salesperson_partner_id = None
+    if updated.get('user_id'):
+        sp_user = call('res.users', 'read', [[updated['user_id'][0]]], {'fields': ['partner_id']})
+        if sp_user:
+            salesperson_partner_id = sp_user[0]['partner_id'][0]
+
+    import uuid as _uuid, json as _json, time as _time
+    _cutoff = _time.time() - 7200
+    for _k in [k for k, v in list(_drafts.items()) if v.get('created', 0) < _cutoff]:
+        _drafts.pop(_k, None)
+    token = _uuid.uuid4().hex
+    _drafts[token] = {
+        'created': _time.time(), 'order_id': order_id,
+        'partner_id_val': partner_id_val, 'partner': partner, 'patch': patch,
+        'pdf_bytes': pdf_bytes, 'filename': filename,
+        '_crm_opportunity': _crm_opportunity, '_crm_tipar': _crm_tipar,
+        '_crm_obchodnik': _crm_obchodnik, '_tipar_partner_id': _tipar_partner_id,
+        'salesperson_partner_id': salesperson_partner_id,
+        'order_name': updated['name'], 'test': test,
+        'form': {
+            'has_roof': bool(has_roof), 'has_ceiling': bool(has_ceiling),
+            'has_sikminy': bool(has_sikminy), 'has_doors': bool(has_doors),
+            'has_windows': bool(has_windows), 'has_blinds': bool(has_blinds),
+            'has_nets': bool(has_nets), 'extra_5000a': bool(extra_5000a),
+            'extra_5000b': bool(extra_5000b), 'extra_5000c': bool(extra_5000c),
+            'material_roof': material_roof or '', 'material_ceiling': material_ceiling or '',
+            'material_sikminy': material_sikminy or '', 'split': split or '',
+            'qty_m2_roof': qty_m2_roof or '', 'qty_m2_ceiling': qty_m2_ceiling or '',
+            'qty_m2_sikminy': qty_m2_sikminy or '', 'qty_m2_doors': qty_m2_doors or '',
+            'qty_win_a': qty_win_a or '', 'qty_win_b': qty_win_b or '',
+            'qty_win_c': qty_win_c or '', 'qty_blinds': qty_blinds or '',
+            'qty_nets': qty_nets or '', 'qty_5100': qty_5100 or '',
+            'qty_5101': qty_5101 or '', 'thickness_roof': thickness_roof or '',
+            'thickness_ceiling': thickness_ceiling or '', 'thickness_sikminy': thickness_sikminy or '',
+            'termin_dokonceni': termin_dokonceni or '', 'termin_zalohy_2': termin_zalohy_2 or '',
+            'termin_days': termin_days_val or '', 'termin_cond': termin_cond_val or '',
+            'grant_enabled': grant_enabled_val not in ('', '0', 'false', 'False'),
+            'remaining_grant_k': remaining_grant_k_val or '',
+            'addr_same': bool(addr_same), 'adresa_realizace': adresa_realizace or '',
+            'popis_dila': popis_dila or '', 'stavebni_pripravenost': stavebni_pripravenost or '',
+            'client_name': client_name or '', 'client_street': client_street or '',
+            'client_zip': client_zip or '', 'client_city': client_city or '',
+            'client_email': client_email or '', 'client_phone': client_phone or '',
+            'client_dob': client_dob or '', 'custom_items': custom_items or '[]',
+        },
+    }
+
+    _pdf_url   = f'/order-form/preview-pdf/{token}?key={key}'
+    _back_url  = f'/order-form?order_id={order_id}&key={key}&draft={token}'
+    _p_display = partner.get('name', '')
+    _o_name    = updated['name']
+    _t_banner  = ('<div style="background:#c00;color:#fff;font-size:12px;font-weight:bold;'
+                  'text-align:center;padding:4px 8px;border-radius:4px;margin-bottom:12px;">'
+                  'TEST REŽIM</div>') if test else ''
+
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Náhled smlouvy &mdash; {_o_name}</title>
+<style>
+*,*::before,*::after{{box-sizing:border-box}}
+body{{font-family:Arial,sans-serif;background:#f5f5f5;color:#333;margin:0;padding:20px}}
+.card{{background:#fff;border-radius:8px;padding:24px;max-width:880px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+h2{{margin:0 0 4px;font-size:20px}}
+.sub{{color:#888;font-size:13px;margin-bottom:8px}}
+.info{{font-size:13px;color:#555;margin:0 0 16px;padding:10px 14px;background:#fffbf0;border:1px solid #f0e0a0;border-radius:6px}}
+iframe{{width:100%;height:72vh;min-height:500px;border:1px solid #ddd;border-radius:6px;display:block}}
+.actions{{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;align-items:center}}
+.btn-back{{padding:12px 24px;font-size:15px;border:2px solid #999;border-radius:6px;background:#fff;color:#555;cursor:pointer;text-decoration:none;font-weight:500}}
+.btn-back:hover{{background:#f5f5f5}}
+.btn-ok{{padding:12px 28px;font-size:15px;background:#c8a840;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold}}
+.btn-ok:hover{{background:#b5942e}}
+</style></head>
+<body><div class="card">
+  {_t_banner}
+  <h2>Náhled smlouvy</h2>
+  <div class="sub">{_p_display} &middot; {_o_name}</div>
+  <div class="info">Zkontrolujte vygenerovanou smlouvu. Pokud je vše v pořádku, klikněte na
+    <strong>Potvrdit a odeslat k podpisu</strong> &mdash; teprve poté bude smlouva odeslána klientovi.</div>
+  <iframe src="{_pdf_url}" title="Náhled smlouvy"></iframe>
+  <div class="actions">
+    <a href="{_back_url}" class="btn-back">&#8592; Zpět na formulář</a>
+    <form method="post" action="/order-form/confirm" style="margin:0">
+      <input type="hidden" name="key" value="{key}">
+      <input type="hidden" name="token" value="{token}">
+      <button type="submit" class="btn-ok">&#10003; Potvrdit a odeslat k podpisu</button>
+    </form>
+  </div>
+</div></body></html>"""
+
+def _order_form_confirm_inner(token, draft):
+    uid, models = odoo_connect()
+
+    def call(model, method, args, kw={}):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+
+    order_id               = draft['order_id']
+    partner_id_val         = draft['partner_id_val']
+    partner                = draft['partner']
+    patch                  = draft['patch']
+    pdf_bytes              = draft['pdf_bytes']
+    filename               = draft['filename']
+    test                   = draft['test']
+    order_name             = draft['order_name']
+    _crm_opportunity       = draft['_crm_opportunity']
+    _crm_tipar             = draft['_crm_tipar']
+    _crm_obchodnik         = draft['_crm_obchodnik']
+    _tipar_partner_id      = draft['_tipar_partner_id']
+    salesperson_partner_id = draft['salesperson_partner_id']
+
+    if patch:
+        call('res.partner', 'write', [[partner_id_val], patch])
+
     call('ir.attachment', 'create', [{
         'name': filename,
         'res_model': 'sale.order',
@@ -1534,26 +1978,21 @@ def _order_form_post_inner(
         'mimetype': 'application/pdf',
     }])
 
-    # Get salesperson's partner_id so they become a follower on the sign request
-    salesperson_partner_id = None
-    if updated.get('user_id'):
-        sp_user = call('res.users', 'read', [[updated['user_id'][0]]], {'fields': ['partner_id']})
-        if sp_user:
-            salesperson_partner_id = sp_user[0]['partner_id'][0]
-
     sign_url = None
     sign_note = ''
     try:
-        _req_id, sign_url = _create_sign_request(call, pdf_bytes, updated['name'],
-                             partner_id_val, partner.get('email', ''),
-                             company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
-                             company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
-                             salesperson_partner_id=salesperson_partner_id,
-                             client_name=partner.get('name', ''),
-                             crm_opportunity=_crm_opportunity,
-                             crm_tipar=_crm_tipar,
-                             crm_obchodnik=_crm_obchodnik,
-                             tipar_partner_id=_tipar_partner_id)
+        _req_id, sign_url = _create_sign_request(
+            call, pdf_bytes, order_name,
+            partner_id_val, partner.get('email', ''),
+            company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
+            company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
+            salesperson_partner_id=salesperson_partner_id,
+            client_name=partner.get('name', ''),
+            crm_opportunity=_crm_opportunity,
+            crm_tipar=_crm_tipar,
+            crm_obchodnik=_crm_obchodnik,
+            tipar_partner_id=_tipar_partner_id,
+        )
         call('sale.order', 'write', [[order_id], {'state': 'sent'}])
         call('sale.order', 'message_post', [[order_id]], {
             'body': (
@@ -1566,10 +2005,27 @@ def _order_form_post_inner(
         })
     except Exception as exc:
         import html as _html
-        sign_note = f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba p&#345;i odesílání k podpisu: {_html.escape(str(exc))}</p>'
+        sign_note = (f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">'
+                     f'Chyba při odesílání k podpisu: {_html.escape(str(exc))}</p>')
+
+    _drafts.pop(token, None)
+
+    import uuid as _uuid2, datetime as _dt2
+    try:
+        _append_log_entry({
+            'log_id':           _uuid2.uuid4().hex,
+            'order_id':         order_id,
+            'order_name':       order_name,
+            'partner_name':     partner.get('name', ''),
+            'opportunity_name': draft.get('_crm_opportunity', ''),
+            'salesperson':      draft.get('_crm_obchodnik', ''),
+            'created_at':       _dt2.datetime.now().isoformat(timespec='seconds'),
+            'form':             draft.get('form', {}),
+        })
+    except Exception as _le:
+        logging.error(f'Log append failed: {_le}')
 
     odoo_order_url = f'{ODOO_URL}/odoo/sales/{order_id}'
-
     sign_block = ''
     if sign_url:
         qr_html = ''
@@ -1578,17 +2034,17 @@ def _order_form_post_inner(
             buf = io.BytesIO()
             _segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
             qr_svg = buf.getvalue().decode('utf-8')
-            qr_html = f"""<p style="margin-top:28px;color:#888;font-size:13px;">nebo naskenujte QR kód telefonem:</p>
-    <div style="display:inline-block;padding:12px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-top:4px;">
-      {qr_svg}
-    </div>"""
+            qr_html = (f'<p style="margin-top:28px;color:#888;font-size:13px;">'
+                       f'nebo naskenujte QR kód telefonem:</p>'
+                       f'<div style="display:inline-block;padding:12px;background:#fff;'
+                       f'border:1px solid #e0e0e0;border-radius:8px;margin-top:4px;">'
+                       f'{qr_svg}</div>')
         except Exception:
             pass
-        sign_block = f"""
-    <a href="{sign_url}" target="_blank"
-       style="display:inline-block;margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;
-              text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">Podepsat smlouvu</a>
-    {qr_html}"""
+        sign_block = (f'<a href="{sign_url}" target="_blank" style="display:inline-block;'
+                      f'margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;'
+                      f'text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">'
+                      f'Podepsat smlouvu</a>{qr_html}')
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Objednávka vytvořena</title></head>
@@ -1596,13 +2052,114 @@ def _order_form_post_inner(
   <div style="background:#fff;border-radius:8px;padding:40px;max-width:520px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
     <div style="font-size:56px;margin-bottom:12px;">&#10003;</div>
     <h2 style="margin:0 0 8px;">Objednávka vytvořena</h2>
-    <p style="color:#555;font-size:14px;margin:0;">{updated['name']}</p>
+    <p style="color:#555;font-size:14px;margin:0;">{order_name}</p>
     {sign_note}
     {sign_block}
     <p style="margin-top:24px;"><a href="{odoo_order_url}" style="color:#aaa;font-size:13px;">Zpět do Odoo</a></p>
   </div>
-
 </body></html>"""
+
+
+@app.post('/order-form/confirm', response_class=HTMLResponse)
+def order_form_confirm(token: str = Form(...), key: str = Form(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+    draft = _drafts.get(token)
+    if not draft:
+        raise HTTPException(status_code=400,
+            detail='Relace vypršela nebo nebyla nalezena. Vraťte se na formulář a odešlete znovu.')
+    import traceback as _tb
+    try:
+        return _order_form_confirm_inner(token, draft)
+    except HTTPException:
+        raise
+    except Exception:
+        tb = _tb.format_exc()
+        logging.error('order_form_confirm error:\n' + tb)
+        import html as _html
+        return HTMLResponse(status_code=500, content=f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Chyba</title></head>
+<body style="font-family:monospace;padding:24px;background:#fff8f8;">
+<h2 style="color:#c00;">Chyba při potvrzování objednávky</h2>
+<pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:13px;">{_html.escape(tb)}</pre>
+</body></html>""")
+
+
+@app.get('/order-form/preview-pdf/{token}')
+def order_form_preview_pdf(token: str, key: str = Query(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    draft = _drafts.get(token)
+    if not draft:
+        raise HTTPException(status_code=404, detail='Preview not found or expired')
+    return StreamingResponse(
+        io.BytesIO(draft['pdf_bytes']),
+        media_type='application/pdf',
+        headers={'Content-Disposition': 'inline; filename="preview.pdf"'},
+    )
+
+
+@app.get('/order-form/history/search')
+def history_search(key: str = Query(...), q: str = Query('')):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    import json as _json2
+    from fastapi.responses import JSONResponse
+    q_lower = q.lower().strip()
+    results = []
+    try:
+        with open(_LOG_FILE, 'r', encoding='utf-8') as _lf:
+            lines = _lf.readlines()
+    except FileNotFoundError:
+        lines = []
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entry = _json2.loads(raw)
+        except Exception:
+            continue
+        if q_lower and not any(
+            q_lower in str(entry.get(k, '')).lower()
+            for k in ('order_name', 'partner_name', 'opportunity_name', 'salesperson', 'created_at')
+        ):
+            continue
+        results.append({
+            'log_id':           entry.get('log_id', ''),
+            'order_name':       entry.get('order_name', ''),
+            'partner_name':     entry.get('partner_name', ''),
+            'opportunity_name': entry.get('opportunity_name', ''),
+            'salesperson':      entry.get('salesperson', ''),
+            'created_at':       entry.get('created_at', ''),
+        })
+        if len(results) >= 30:
+            break
+    return JSONResponse(results)
+
+
+@app.get('/order-form/history/load/{log_id}')
+def history_load(log_id: str, key: str = Query(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    import json as _json2
+    from fastapi.responses import JSONResponse
+    try:
+        with open(_LOG_FILE, 'r', encoding='utf-8') as _lf:
+            for raw in reversed(_lf.readlines()):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = _json2.loads(raw)
+                except Exception:
+                    continue
+                if entry.get('log_id') == log_id:
+                    return JSONResponse(entry.get('form', {}))
+    except FileNotFoundError:
+        pass
+    raise HTTPException(status_code=404, detail='Entry not found')
+
 
 # @app.get('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
 # def verify_get(sign_id: int, partner_id: int, token: str): ...
