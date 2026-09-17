@@ -1745,7 +1745,7 @@ def _order_form_post_inner(
                     'product_id':      custom_prod_id,
                     'name':            item.get('desc') or 'Vlastn\u00ed polo\u017eka',
                     'product_uom_qty': item_qty,
-                    'product_uom':     item_uom,
+                    'product_uom_id':  item_uom,
                     'price_unit':      item_price,
                     'discount':        0,
                 }))
