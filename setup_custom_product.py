@@ -20,7 +20,7 @@ TAX_ID = 21   # 12% G — same as all other LUNASTAV products
 UOM_KS = 1    # Ks (pieces) — default; overridden per order line by the form
 
 existing = call('product.template', 'search_read',
-                [[('default_code', '=', 'CUSTOM')]],
+                [[('default_code', 'in', ['XXX', 'CUSTOM'])]],
                 {'fields': ['id', 'name', 'default_code', 'type']})
 
 if existing:
@@ -28,12 +28,13 @@ if existing:
     print(f'Product template CUSTOM already exists: id={tmpl_id} name={existing[0]["name"]!r}')
     if apply:
         call('product.template', 'write', [[tmpl_id], {
-            'name':     'Vlastní položka',
-            'type':     'service',
-            'uom_id':   UOM_KS,
-            'taxes_id': [[6, 0, [TAX_ID]]],
-            'list_price': 0.0,
-            'active':   True,
+            'name':         'Vlastní položka',
+            'default_code': 'XXX',
+            'type':         'service',
+            'uom_id':       UOM_KS,
+            'taxes_id':     [[6, 0, [TAX_ID]]],
+            'list_price':   0.0,
+            'active':       True,
         }])
         print('  Updated.')
     else:

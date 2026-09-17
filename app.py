@@ -437,6 +437,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     <input type="hidden" name="remaining_grant_k_val" id="inp_remaining_grant_k_val" value="">
     <input type="hidden" name="termin_days_val" id="inp_termin_days_val" value="">
     <input type="hidden" name="termin_cond_val" id="inp_termin_cond_val" value="">
+    <input type="hidden" name="termin_dokonceni_manual" id="inp_termin_dokonceni_manual" value="">
+    <input type="hidden" name="popis_dila_manual" id="inp_popis_dila_manual" value="">
+    <input type="hidden" name="stavebni_pripravenost_manual" id="inp_stavebni_pripravenost_manual" value="">
 
     <span class="field-label">Kontakt</span>
     <div style="display:grid;gap:8px;margin-bottom:20px;">
@@ -1175,6 +1178,9 @@ document.getElementById('mainForm').addEventListener('submit', function() {{
   document.getElementById('inp_custom_items').value = JSON.stringify(items);
   document.getElementById('inp_grant_enabled_val').value = document.getElementById('grant_enabled').checked ? '1' : '';
   document.getElementById('inp_remaining_grant_k_val').value = document.getElementById('remaining_grant_k').value || '';
+  document.getElementById('inp_termin_dokonceni_manual').value = _manualFields.has('termin_dokonceni') ? '1' : '';
+  document.getElementById('inp_popis_dila_manual').value = _manualFields.has('popis_dila') ? '1' : '';
+  document.getElementById('inp_stavebni_pripravenost_manual').value = _manualFields.has('stavebni_pripravenost') ? '1' : '';
   const _td = document.querySelector('input[name="termin_days"]:checked');
   document.getElementById('inp_termin_days_val').value = _td ? _td.value : '';
   const _tc = document.querySelector('input[name="termin_cond"]:checked');
@@ -1243,8 +1249,10 @@ function prefillForm(d, templateMode) {{
     }}
   }}
   if (d.grant_enabled === false) document.getElementById('grant_enabled').checked = false;
-  const grkEl = document.getElementById('remaining_grant_k');
-  if (grkEl) grkEl.value = d.remaining_grant_k !== undefined ? d.remaining_grant_k : grkEl.value;
+  if (!templateMode) {{
+    const grkEl = document.getElementById('remaining_grant_k');
+    if (grkEl) grkEl.value = d.remaining_grant_k !== undefined ? d.remaining_grant_k : grkEl.value;
+  }}
   if (d.has_blinds) {{
     document.getElementById('chk_blinds').checked = true;
     document.getElementById('blinds-qty-section').classList.remove('hidden');
@@ -1272,10 +1280,10 @@ function prefillForm(d, templateMode) {{
     }} catch(e) {{}}
   }}
   calc();
-  if (d.termin_dokonceni) manualField('termin_dokonceni', d.termin_dokonceni);
+  if (d.termin_dokonceni_manual && d.termin_dokonceni) manualField('termin_dokonceni', d.termin_dokonceni);
   else {{ radio('termin_days', d.termin_days); radio('termin_cond', d.termin_cond); updateTermin(); }}
-  if (d.popis_dila) manualField('popis_dila', d.popis_dila); else updatePopisDila();
-  if (d.stavebni_pripravenost) manualField('stavebni_pripravenost', d.stavebni_pripravenost); else updateStavebni();
+  if (d.popis_dila_manual && d.popis_dila) manualField('popis_dila', d.popis_dila); else updatePopisDila();
+  if (d.stavebni_pripravenost_manual && d.stavebni_pripravenost) manualField('stavebni_pripravenost', d.stavebni_pripravenost); else updateStavebni();
   checkSubmit();
 }}
 (function() {{ prefillForm({draft_json}); }})();
@@ -1438,6 +1446,9 @@ def order_form_post(
     remaining_grant_k_val: str = Form(''),
     termin_days_val: str = Form(''),
     termin_cond_val: str = Form(''),
+    termin_dokonceni_manual: str = Form(''),
+    popis_dila_manual: str = Form(''),
+    stavebni_pripravenost_manual: str = Form(''),
 ):
     if key != SERVICE_KEY:
         raise HTTPException(status_code=401, detail='Unauthorized')
@@ -1477,6 +1488,9 @@ def order_form_post(
             remaining_grant_k_val=remaining_grant_k_val,
             termin_days_val=termin_days_val,
             termin_cond_val=termin_cond_val,
+            termin_dokonceni_manual=termin_dokonceni_manual,
+            popis_dila_manual=popis_dila_manual,
+            stavebni_pripravenost_manual=stavebni_pripravenost_manual,
         )
     except HTTPException:
         raise
@@ -1518,6 +1532,9 @@ def _order_form_post_inner(
     remaining_grant_k_val='',
     termin_days_val='',
     termin_cond_val='',
+    termin_dokonceni_manual='',
+    popis_dila_manual='',
+    stavebni_pripravenost_manual='',
 ):
     uid, models = odoo_connect()
 
@@ -1732,9 +1749,9 @@ def _order_form_post_inner(
     UOM_MAP = {'ks': 1, 'm': 9, 'm2': 11}
     if custom_items_list:
         custom_prod = call('product.product', 'search_read',
-                           [[['default_code', '=', 'CUSTOM']]], {'fields': ['id'], 'limit': 1})
+                           [[['default_code', '=', 'XXX']]], {'fields': ['id'], 'limit': 1})
         if not custom_prod:
-            raise HTTPException(status_code=400, detail='Produkt [CUSTOM] nenalezen v Odoo. Spus\u0165te setup_custom_product.py.')
+            raise HTTPException(status_code=400, detail='Produkt [XXX] nenalezen v Odoo. Spus\u0165te setup_custom_product.py.')
         custom_prod_id = custom_prod[0]['id']
         for item in custom_items_list:
             item_qty   = float(item.get('qty')   or 0)
@@ -1898,6 +1915,9 @@ def _order_form_post_inner(
             'remaining_grant_k': remaining_grant_k_val or '',
             'addr_same': bool(addr_same), 'adresa_realizace': adresa_realizace or '',
             'popis_dila': popis_dila or '', 'stavebni_pripravenost': stavebni_pripravenost or '',
+            'termin_dokonceni_manual': bool(termin_dokonceni_manual),
+            'popis_dila_manual': bool(popis_dila_manual),
+            'stavebni_pripravenost_manual': bool(stavebni_pripravenost_manual),
             'client_name': client_name or '', 'client_street': client_street or '',
             'client_zip': client_zip or '', 'client_city': client_city or '',
             'client_email': client_email or '', 'client_phone': client_phone or '',
