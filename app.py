@@ -2163,6 +2163,7 @@ def history_load(log_id: str, key: str = Query(...)):
 
 @app.post('/order-form/import-log')
 async def import_log(request: Request, key: str = Query(...)):
+    from fastapi.responses import JSONResponse
     if key != SERVICE_KEY:
         raise HTTPException(status_code=403, detail='Forbidden')
     body = await request.body()
