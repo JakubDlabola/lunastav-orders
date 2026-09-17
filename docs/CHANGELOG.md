@@ -1,5 +1,14 @@
 # Changelog
 
+## [2026-09-17] — Opravy načítání šablony
+
+- Zbývající dotace (Kč) se při načtení šablony nepřepíše — zůstává hodnota aktuální zakázky
+- Termín dokončení (radio 30/60/90 dní) se nyní správně předvolí dle šablony
+- Textová pole (Popis díla, Termín dokončení, Stavební připravenost) přejdou do manuálního režimu jen tehdy, když byl text v původní zakázce skutečně ručně upraven; jinak se automaticky přegenerují z nových parametrů
+- Kód produktu pro vlastní položky přejmenován z `CUSTOM` na `XXX` (Odoo i aplikace)
+- Oprava JS SyntaxError bránícího načtení stránky (chybné escapování uvozovek v Python f-stringu)
+- Oprava pole `product_uom` → `product_uom_id` pro Odoo 19.2
+
 ## [2026-09-17] — Šablony zakázek (historie)
 - Tlačítko „Načíst šablonu" v záhlaví formuláře otevírá overlay s vyhledáváním v logu zakázek
 - Vyhledávání (debounce 300 ms) prohledává: číslo zakázky, jméno klienta, příležitost, obchodník
