@@ -22,17 +22,36 @@ Po kliknutí se otevře vyhledávací panel, kde lze hledat podle:
 
 Po výběru zakázky ze seznamu se do formuláře automaticky přenesou **pracovní parametry**:
 
-| Co se přenese | Co se nepřenese |
+| Co se přenese |
 |---|---|
-| Typ práce (střecha, strop, šikminy, okna, dveře…) | Jméno a kontaktní údaje klienta |
-| Materiál a plocha (m²) | Zbývající výše dotace (Kč) |
-| Tloušťka izolace | |
-| Termín dokončení (výběr dní) | |
-| Dotace zapnuta/vypnuta | |
-| Žaluzie, sítě, doplňky | |
-| Vlastní položky | |
-| Ručně upravený text polí Popis díla / Termín / Stavební připravenost (jen pokud byl text skutečně ručně změněn) | Automaticky generované texty (ty se přegenerují z nových parametrů) |
+| Typ práce (střecha, strop, šikminy, okna, dveře…) |
+| Materiál a plocha (m²) | 
+| Tloušťka izolace |
+| Termín dokončení (výběr dní) |
+| Dotace zapnuta/vypnuta |
+| Žaluzie, sítě, doplňky |
+| Vlastní položky |
+| Ručně upravený text polí Popis díla / Termín / Stavební připravenost (jen pokud byl text skutečně ručně změněn) |
+
 
 **Kontaktní údaje a dotační zůstatek zůstanou beze změny** — šablona doplní pouze parametry práce, formulář je stále namířen na aktuálního klienta a aktuální příležitost.
 
 > **Tip:** Šablona funguje nejlépe u opakujících se typů zakázek (stejný materiál, stejná plocha). Po načtení šablony vždy zkontrolujte plochy a ceny — kalkulace se spustí automaticky.
+
+---
+
+## Vlastní položky
+
+Ve formuláři je sekce **„Vlastní položky"** (pod standardními typy prací). Slouží pro libovolné řádky, které nespadají do běžné nabídky — například doprava, lešení, poplatek za likvidaci odpadu apod.
+
+Pro každou vlastní položku se vyplní:
+- **Popis** — text, který se zobrazí ve smlouvě
+- **Množství** — číslo
+- **Jednotka** — ks / m / m²
+- **Jednotková cena bez DPH** (Kč)
+
+Tlačítkem **„+ Přidat položku"** lze přidat libovolný počet řádků. Každý řádek lze samostatně odstranit křížkem vpravo.
+
+Vlastní položky se zobrazí ve smlouvě jako standardní řádky zakázky. DPH 12 % se přičítá automaticky, sleva ani dotace se na vlastní položky nevztahují.
+
+Vlastní položky se ukládají do logu a při načtení šablony se přenesou do nového formuláře — stačí pak upravit jen popis nebo cenu.
