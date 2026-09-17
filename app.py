@@ -2161,6 +2161,21 @@ def history_load(log_id: str, key: str = Query(...)):
     raise HTTPException(status_code=404, detail='Entry not found')
 
 
+@app.post('/order-form/import-log')
+async def import_log(request: Request, key: str = Query(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    body = await request.body()
+    lines = [l for l in body.decode('utf-8').splitlines() if l.strip()]
+    written = 0
+    with _log_lock:
+        with open(_LOG_FILE, 'a', encoding='utf-8') as f:
+            for line in lines:
+                f.write(line + '\n')
+                written += 1
+    return JSONResponse({'written': written, 'log_file': _LOG_FILE})
+
+
 # @app.get('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)
 # def verify_get(sign_id: int, partner_id: int, token: str): ...
 #
