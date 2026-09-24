@@ -2062,9 +2062,9 @@ def _order_form_confirm_inner(token, draft):
         except Exception:
             pass
         sign_block = (f'<a href="{sign_url}" target="_blank" style="display:inline-block;'
-                      f'margin-top:20px;padding:13px 28px;background:#c8a840;color:#fff;'
-                      f'text-decoration:none;border-radius:6px;font-size:15px;font-weight:bold;">'
-                      f'Spustit náhled smlouvy</a>{qr_html}')
+                      f'margin-top:20px;padding:19px 42px;background:#c8a840;color:#fff;'
+                      f'text-decoration:none;border-radius:6px;font-size:22px;font-weight:bold;letter-spacing:1px;">'
+                      f'ZOBRAZIT DOKUMENT</a>{qr_html}')
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Objednávka vytvořena</title></head>

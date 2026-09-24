@@ -58,8 +58,8 @@ INVITE_ARCH = """\
     </td></tr>
     <tr><td valign="top">
         <div style="margin:16px auto; text-align:center;">
-            <a t-att-href="link" t-attf-style="padding: 8px 16px 8px 16px; border-radius: 3px; background-color: {{record.communication_company_id.email_secondary_color or '#875A7B'}}; text-align:center; text-decoration:none; color: {{record.communication_company_id.email_primary_color or '#FFFFFF'}};">
-                Spustit náhled smlouvy
+            <a t-att-href="link" t-attf-style="padding: 12px 24px 12px 24px; border-radius: 3px; background-color: {{record.communication_company_id.email_secondary_color or '#875A7B'}}; text-align:center; text-decoration:none; color: {{record.communication_company_id.email_primary_color or '#FFFFFF'}}; font-size:24px; font-weight:bold; letter-spacing:1px;">
+                ZOBRAZIT DOKUMENT
             </a>
         </div>
     </td></tr>
