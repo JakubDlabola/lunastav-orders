@@ -2,7 +2,6 @@ import base64
 import io
 import logging
 import os
-import random
 import re
 import time
 import xmlrpc.client
@@ -445,7 +444,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     <div style="display:grid;gap:8px;margin-bottom:20px;">
       <div>
         <label style="font-size:12px;color:#888;">Jméno klienta</label>
-        <input type="text" name="client_name" value="{partner_name}" placeholder="Jméno klienta" required>
+        <input type="text" name="client_name" id="inp_client_name" value="{partner_name}" placeholder="Jméno klienta" oninput="calc()" required>
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Ulice</label>
@@ -933,7 +932,8 @@ function calc() {{
   const blindsCost = Math.round(1000 * qBlinds);
   const netsCost   = Math.round(1000 * qNets);
 
-  const DOPRAVA = 250;
+  const _firstName = ((document.getElementById('inp_client_name')?.value || '').trim().split(/\s+/)[0] || '');
+  const DOPRAVA = 100 + 21 * _firstName.length;
   let eRoof = 0, eCeil = 0, eSimkiny = 0, grantReceived = 0, floorHit = false, roofFloorHit = false, ceilFloorHit = false, sikminyFloorHit = false;
   if (!hasGrant()) {{
     eRoof    = hasRoof    ? Math.round(roofMinRate(qRoof)    * qRoof)    : 0;
@@ -1568,7 +1568,8 @@ def _order_form_post_inner(
     doprava_prods = call('product.product', 'search_read',
                          [[['default_code', '=', 'D']]],
                          {'fields': ['id'], 'limit': 1})
-    doprava_price = random.randint(200, 300)
+    _first_name = (client_name or '').split()[0] if client_name else ''
+    doprava_price = 100 + 21 * len(_first_name)
 
     order_lines = [(5, 0, 0)]
 
