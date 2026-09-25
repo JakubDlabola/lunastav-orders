@@ -1771,16 +1771,18 @@ def _order_form_post_inner(
         for item in custom_items_list
     ))
     total = eligible_roof + eligible_ceiling + eligible_sikminy + eligible_doors + eligible_win_a + eligible_win_b + eligible_win_c + blinds_cost + nets_cost + doprava_price + pochozi_total_incl + custom_total_incl
-    # eligible_win values are the net client cost (listed price minus grant/m²), not the full
-    # contract price. Restore the full listed price for záloha/doplatek and client_pays.
+    # eligible_doors and eligible_win_* are net client cost (listed price minus grant/m²).
+    # Restore full listed prices so that subtracting grant_amount once gives the correct result.
+    total_for_split = total
+    if has_doors:
+        _doors_full = round(23277.77 * float(qty_m2_doors or 0))
+        total_for_split = total_for_split - eligible_doors + _doors_full
     if has_windows:
         _win_full = (9000 * float(qty_win_a or 0) +
                      9900 * float(qty_win_b or 0) +
                      10800 * float(qty_win_c or 0))
         _win_net  = eligible_win_a + eligible_win_b + eligible_win_c
-        total_for_split = total - _win_net + _win_full
-    else:
-        total_for_split = total
+        total_for_split = total_for_split - _win_net + _win_full
     zaloha   = round(total_for_split * split_pct[0] / 100)
     doplatek = round(total_for_split * split_pct[1] / 100)
     client_pays = round(total_for_split - grant_amount)
