@@ -2122,19 +2122,36 @@ def order_form_preview_page(token: str, page: int, key: str = Query(...)):
     draft = _drafts.get(token)
     if not draft:
         raise HTTPException(status_code=404, detail='Preview not found or expired')
-    import pypdfium2
-    pdf = pypdfium2.PdfDocument(draft['pdf_bytes'])
-    try:
-        if not 0 <= page < len(pdf):
-            raise HTTPException(status_code=404, detail='Page not found')
-        buf = io.BytesIO()
-        pg = pdf[page]
-        pg.render(scale=2).to_pil().save(buf, format='PNG', optimize=True)
-        pg.close()
-    finally:
-        pdf.close()
     from fastapi.responses import Response
-    return Response(buf.getvalue(), media_type='image/png', headers={'Cache-Control': 'private, max-age=7200'})
+    return Response(_render_preview_page(draft, page), media_type='image/png',
+                    headers={'Cache-Control': 'private, max-age=7200'})
+
+
+_pdfium_lock = _threading.Lock()
+
+
+def _render_preview_page(draft, page):
+    # pdfium is not thread-safe and the browser requests all pages at once; parallel renders
+    # crash the process and lose every in-memory draft. One at a time, cached per draft.
+    cache = draft.setdefault('page_png', {})
+    if page in cache:
+        return cache[page]
+    import pypdfium2
+    with _pdfium_lock:
+        if page in cache:
+            return cache[page]
+        pdf = pypdfium2.PdfDocument(draft['pdf_bytes'])
+        try:
+            if not 0 <= page < len(pdf):
+                raise HTTPException(status_code=404, detail='Page not found')
+            buf = io.BytesIO()
+            pg = pdf[page]
+            pg.render(scale=1.6).to_pil().save(buf, format='PNG', optimize=True)
+            pg.close()
+        finally:
+            pdf.close()
+        cache[page] = buf.getvalue()
+    return cache[page]
 
 
 @app.get('/order-form/preview-pdf/{token}')
