@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-09-28] — Náhled smlouvy funguje na iPhonu
+- Náhled PDF před potvrzením se zobrazuje jako obrázky jednotlivých stran místo vloženého PDF — Safari na iOS ve vloženém PDF ukázal jen první stranu a nešlo listovat dál
+- Nad stranami odkaz „Otevřít PDF" pro zobrazení původního PDF v nové záložce
+- Nový endpoint `GET /order-form/preview-page/{token}/{page}` (PNG strany, stejná platnost jako náhled)
+
 ## [2026-09-17] — Opravy načítání šablony
 
 - Zbývající dotace (Kč) se při načtení šablony nepřepíše — zůstává hodnota aktuální zakázky

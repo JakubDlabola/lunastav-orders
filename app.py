@@ -1929,6 +1929,11 @@ def _order_form_post_inner(
     }
 
     _pdf_url   = f'/order-form/preview-pdf/{token}?key={key}'
+    # Pages as images: iOS Safari shows only the first page of a PDF in an iframe
+    from pypdf import PdfReader as _PdfReader
+    _pages_html = ''.join(
+        f'<img src="/order-form/preview-page/{token}/{i}?key={key}" alt="Strana {i + 1}" loading="lazy">'
+        for i in range(len(_PdfReader(io.BytesIO(pdf_bytes)).pages)))
     _back_url  = f'/order-form?order_id={order_id}&key={key}&draft={token}'
     _p_display = partner.get('name', '')
     _o_name    = updated['name']
@@ -1945,7 +1950,8 @@ body{{font-family:Arial,sans-serif;background:#f5f5f5;color:#333;margin:0;paddin
 h2{{margin:0 0 4px;font-size:20px}}
 .sub{{color:#888;font-size:13px;margin-bottom:8px}}
 .info{{font-size:13px;color:#555;margin:0 0 16px;padding:10px 14px;background:#fffbf0;border:1px solid #f0e0a0;border-radius:6px}}
-iframe{{width:100%;height:72vh;min-height:500px;border:1px solid #ddd;border-radius:6px;display:block}}
+.pages img{{width:100%;border:1px solid #ddd;border-radius:4px;display:block;margin-top:12px;background:#fff}}
+.pdf-link{{display:inline-block;font-size:13px;color:#8a6d1a}}
 .actions{{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;align-items:center}}
 .btn-back{{padding:12px 24px;font-size:15px;border:2px solid #999;border-radius:6px;background:#fff;color:#555;cursor:pointer;text-decoration:none;font-weight:500}}
 .btn-back:hover{{background:#f5f5f5}}
@@ -1958,7 +1964,8 @@ iframe{{width:100%;height:72vh;min-height:500px;border:1px solid #ddd;border-rad
   <div class="sub">{_p_display} &middot; {_o_name}</div>
   <div class="info">Zkontrolujte vygenerovanou smlouvu. Pokud je vše v pořádku, klikněte na
     <strong>Potvrdit a odeslat k podpisu</strong> &mdash; teprve poté bude smlouva odeslána klientovi.</div>
-  <iframe src="{_pdf_url}" title="Náhled smlouvy"></iframe>
+  <a class="pdf-link" href="{_pdf_url}" target="_blank">Otevřít PDF</a>
+  <div class="pages">{_pages_html}</div>
   <div class="actions">
     <a href="{_back_url}" class="btn-back">&#8592; Zpět na formulář</a>
     <form method="post" action="/order-form/confirm" style="margin:0">
@@ -2106,6 +2113,28 @@ def order_form_confirm(token: str = Form(...), key: str = Form(...)):
 <h2 style="color:#c00;">Chyba při potvrzování objednávky</h2>
 <pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:13px;">{_html.escape(tb)}</pre>
 </body></html>""")
+
+
+@app.get('/order-form/preview-page/{token}/{page}')
+def order_form_preview_page(token: str, page: int, key: str = Query(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    draft = _drafts.get(token)
+    if not draft:
+        raise HTTPException(status_code=404, detail='Preview not found or expired')
+    import pypdfium2
+    pdf = pypdfium2.PdfDocument(draft['pdf_bytes'])
+    try:
+        if not 0 <= page < len(pdf):
+            raise HTTPException(status_code=404, detail='Page not found')
+        buf = io.BytesIO()
+        pg = pdf[page]
+        pg.render(scale=2).to_pil().save(buf, format='PNG', optimize=True)
+        pg.close()
+    finally:
+        pdf.close()
+    from fastapi.responses import Response
+    return Response(buf.getvalue(), media_type='image/png', headers={'Cache-Control': 'private, max-age=7200'})
 
 
 @app.get('/order-form/preview-pdf/{token}')

@@ -7,4 +7,6 @@ python-docx==1.1.2
 lxml==5.3.0
 pypdf==4.3.1
 twilio==9.3.7
+pypdfium2==4.30.0
+pillow==10.4.0
 # build-bust
