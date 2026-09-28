@@ -1,5 +1,8 @@
 # Changelog
 
+## [2026-09-28] — Oprava náhledu smlouvy (výpadek po zobrazení)
+- Strany náhledu se vykreslují postupně jedna po druhé a ukládají se k náhledu — knihovna pro vykreslování PDF nesnese souběžné volání; prohlížeč si vyžádal všechny strany najednou, služba spadla a náhled pak hlásil „Preview not found or expired"
+
 ## [2026-09-28] — Náhled smlouvy funguje na iPhonu
 - Náhled PDF před potvrzením se zobrazuje jako obrázky jednotlivých stran místo vloženého PDF — Safari na iOS ve vloženém PDF ukázal jen první stranu a nešlo listovat dál
 - Nad stranami odkaz „Otevřít PDF" pro zobrazení původního PDF v nové záložce
