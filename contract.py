@@ -10,6 +10,11 @@ from docx.oxml.ns import qn
 from lxml import etree
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
+DODATEK_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Dodatek-LUNASTAV-vzor.docx')
+
+SIGN_ANCHOR = '◆'  # app._create_sign_request places the signature boxes on this marker
+_SIG_ROW_HEIGHT = 2600  # twips; the Odoo sign box is 0.16 of the page height
+_PLACE_DATE_TAB_POS = 6237  # twips (11 cm): column of "dne …" on the "V {obec} dne {datum}" line
 
 def _fmt_qty(q):
     try:
@@ -173,6 +178,131 @@ def _remove_trailing_blank_page(doc):
         el.set(qn('w:val'), '2')  # 1pt = 2 half-points
 
 
+def _text(el):
+    return ''.join(t.text or '' for t in el.iter(qn('w:t')))
+
+
+def _ensure_child(parent, tag, before=()):
+    """Return parent's child `tag`, creating it ahead of the first existing sibling in `before`."""
+    el = parent.find(qn(tag))
+    if el is not None:
+        return el
+    el = etree.Element(qn(tag))
+    for i, child in enumerate(parent):
+        if child.tag in [qn(b) for b in before]:
+            parent.insert(i, el)
+            return el
+    parent.append(el)
+    return el
+
+
+def _ppr(p):
+    pPr = p.find(qn('w:pPr'))
+    if pPr is None:
+        pPr = etree.Element(qn('w:pPr'))
+        p.insert(0, pPr)
+    return pPr
+
+
+def _keep_with_next(p):
+    pPr = _ppr(p)
+    if pPr.find(qn('w:keepNext')) is None:
+        pStyle = pPr.find(qn('w:pStyle'))
+        pPr.insert(list(pPr).index(pStyle) + 1 if pStyle is not None else 0, etree.Element(qn('w:keepNext')))
+
+
+def _prepare_signature_tables(doc):
+    """Keep each signature block (the "V … dne …" line + Jméno/podpis/Objednatel table) on one page
+    and make sure its signing box carries the anchor the sign boxes are placed on."""
+    for tbl in doc.element.body.iter(qn('w:tbl')):
+        rows = tbl.findall(qn('w:tr'))
+        if len(rows) != 3 or 'Objednatel' not in _text(rows[2]) or 'Zhotovitel' not in _text(rows[2]):
+            continue
+        for tr in rows:
+            trPr = tr.find(qn('w:trPr'))
+            if trPr is None:
+                trPr = etree.Element(qn('w:trPr'))
+                tcs = tr.find(qn('w:tblPrEx'))
+                tr.insert(1 if tcs is not None else 0, trPr)
+            _ensure_child(trPr, 'w:cantSplit', before=('w:trHeight', 'w:tblHeader', 'w:tblCellSpacing', 'w:jc', 'w:hidden'))
+        for tr in rows[:2]:
+            for p in tr.iter(qn('w:p')):
+                _keep_with_next(p)
+
+        box_row = rows[1]
+        height = _ensure_child(box_row.find(qn('w:trPr')), 'w:trHeight',
+                               before=('w:tblHeader', 'w:tblCellSpacing', 'w:jc', 'w:hidden'))
+        if int(height.get(qn('w:val')) or 0) < _SIG_ROW_HEIGHT:
+            height.set(qn('w:val'), str(_SIG_ROW_HEIGHT))
+        if SIGN_ANCHOR not in _text(tbl):
+            cell = box_row.find(qn('w:tc'))
+            tcPr = _ensure_child(cell, 'w:tcPr')
+            cell.remove(tcPr)
+            cell.insert(0, tcPr)
+            valign = _ensure_child(tcPr, 'w:vAlign')
+            valign.set(qn('w:val'), 'center')
+            p = cell.find(qn('w:p'))
+            if p is None:
+                p = etree.SubElement(cell, qn('w:p'))
+            r = etree.SubElement(p, qn('w:r'))
+            rPr = etree.SubElement(r, qn('w:rPr'))
+            etree.SubElement(rPr, qn('w:color')).set(qn('w:val'), 'FFFFFF')
+            etree.SubElement(rPr, qn('w:sz')).set(qn('w:val'), '12')
+            t = etree.SubElement(r, qn('w:t'))
+            t.text = SIGN_ANCHOR
+
+        # The place/date line and any blank paragraphs right above the table go with it
+        prev = tbl.getprevious()
+        while prev is not None and prev.tag == qn('w:p'):
+            _keep_with_next(prev)
+            if _text(prev).strip():
+                break
+            prev = prev.getprevious()
+
+
+def _normalize_place_date_lines(doc):
+    """"V {companyCity}<7 tabs>dne {date}" wraps the date onto a second line for long town names.
+    Use a single tab to a fixed tab stop instead, so "dne …" always sits in the same column."""
+    for p in doc.element.body.iter(qn('w:p')):
+        txt = _text(p)
+        if '{companyCity}' not in txt or 'dne' not in txt:
+            continue
+        tabs = list(p.iter(qn('w:tab')))
+        tabs = [t for t in tabs if t.getparent().tag == qn('w:r')]
+        if not tabs:
+            continue
+        for t in tabs[1:]:
+            t.getparent().remove(t)
+        pPr = _ppr(p)
+        stops = _ensure_child(pPr, 'w:tabs', before=(
+            'w:suppressAutoHyphens', 'w:kinsoku', 'w:wordWrap', 'w:overflowPunct', 'w:topLinePunct',
+            'w:autoSpaceDE', 'w:autoSpaceDN', 'w:bidi', 'w:adjustRightInd', 'w:snapToGrid', 'w:spacing',
+            'w:ind', 'w:contextualSpacing', 'w:mirrorIndents', 'w:suppressOverlap', 'w:jc', 'w:textDirection',
+            'w:textAlignment', 'w:textboxTightWrap', 'w:outlineLvl', 'w:divId', 'w:cnfStyle', 'w:rPr',
+            'w:sectPr', 'w:pPrChange'))
+        for old in list(stops):
+            stops.remove(old)
+        stop = etree.SubElement(stops, qn('w:tab'))
+        stop.set(qn('w:val'), 'left')
+        stop.set(qn('w:pos'), str(_PLACE_DATE_TAB_POS))
+
+
+def _fill_dodatek_place_date_line(doc):
+    """The dodatek template has a bare "V dne:" line; give it the contract's placeholders."""
+    for p in doc.element.body.iter(qn('w:p')):
+        if _text(p).strip() != 'V dne:':
+            continue
+        runs = p.findall(qn('w:r'))
+        first = runs[0]
+        for r in runs[1:]:
+            p.remove(r)
+        for child in list(first):
+            if child.tag != qn('w:rPr'):
+                first.remove(child)
+        _build_run_text(first, 'V {companyCity}\tdne {scheduledEnd}')
+        return
+
+
 def accept_track_changes(doc):
     """Accept all tracked changes: keep inserted text, discard deleted text."""
     body = doc.element.body
@@ -218,8 +348,8 @@ def set_page_header(doc, contract_number: str):
 
 def fill_items_table(doc, items):
     """Replace the single items template row with one row per order line."""
-    table = doc.tables[1]
-    template_tr = table.rows[2]._tr
+    template_tr = next(tr for tbl in doc.tables for tr in tbl._tbl.iter(qn('w:tr'))
+                       if '{BusinessCaseItemCode}' in _text(tr))
     parent = template_tr.getparent()
     insert_idx = list(parent).index(template_tr)
 
@@ -240,19 +370,64 @@ def fill_items_table(doc, items):
     parent.remove(template_tr)
 
 
-def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
-    doc = Document(TEMPLATE_PATH)
+def _open_template(path, header_text):
+    doc = Document(path)
     accept_track_changes(doc)
     _remove_trailing_blank_page(doc)
-    set_page_header(doc, order.get('name', ''))
+    set_page_header(doc, header_text)
+    if path == DODATEK_TEMPLATE_PATH:
+        _fill_dodatek_place_date_line(doc)
+    _normalize_place_date_lines(doc)
+    _prepare_signature_tables(doc)
+    return doc
 
+
+def _to_pdf(doc) -> bytes:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        docx_path = os.path.join(tmpdir, 'contract.docx')
+        pdf_path = os.path.join(tmpdir, 'contract.pdf')
+        doc.save(docx_path)
+
+        subprocess.run(
+            ['soffice', '--headless', '--convert-to', 'pdf', '--outdir', tmpdir, docx_path],
+            check=True,
+            timeout=60,
+            capture_output=True,
+        )
+
+        with open(pdf_path, 'rb') as f:
+            return f.read()
+
+
+def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
+    doc = _open_template(TEMPLATE_PATH, order.get('name', ''))
+    _fill(doc, order, partner, lines)
+    return _to_pdf(doc)
+
+
+def generate_dodatek(order: dict, partner: dict, lines: list,
+                     dodatek_cislo: str, smlouva_cislo: str, smlouva_datum) -> bytes:
+    """order carries the dodatek's computed totals in the sale.order field names generate_contract uses;
+    x_studio_datum_podpisu_smlouvy is the dodatek's own date (the "V … dne …" line)."""
+    doc = _open_template(DODATEK_TEMPLATE_PATH, dodatek_cislo)
+    _fill(doc, order, partner, lines, {
+        '{Cislo_doda_6aa73}': dodatek_cislo,
+        '{Cislo_puvo_64efa}': smlouva_cislo,
+        '{Datum_podp_7ebca}': fmt_date(smlouva_datum),
+    })
+    return _to_pdf(doc)
+
+
+def price_summary(order: dict, lines: list) -> dict:
+    """The "Cena před slevou / Sleva / Sleva celkem" figures and the grant area shown in the price table."""
     TAX = 1.12
     LISTED_PRICES = {
         '3000A': 2002, '3100A': 2002, '3200A': 2002,
         '3000B': 751,  '3100B': 751,  '3200B': 751,
+        '3000C': 2002, '3100C': 2002, '3200C': 2002,  # šikminy: same listed price as the roof
     }
     WIN_CODES = {'4000A', '4000B', '4000C', '4001A', '4001B'}
-    insul_codes = {'3000A', '3100A', '3200A', '3000B', '3100B', '3200B'}
+    insul_codes = set(LISTED_PRICES)
     has_windows = False
     insul_area = 0.0
     real_listed_excl = 0.0
@@ -285,6 +460,15 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         # Without this, the forced 3% label would be inconsistent with the tiny real amount.
         total_real_listed_excl = round(amount_untaxed / 0.97)
         real_discount_excl = total_real_listed_excl - round(amount_untaxed)
+    return {'price_without_discount': total_real_listed_excl, 'discount_pct': discount_pct,
+            'discount': real_discount_excl, 'dotace_area': dotace_area}
+
+
+def _fill(doc, order: dict, partner: dict, lines: list, extra_replacements=None):
+    s = price_summary(order, lines)
+    amount_untaxed = order.get('amount_untaxed') or 0
+    total_real_listed_excl, discount_pct = s['price_without_discount'], s['discount_pct']
+    real_discount_excl, dotace_area = s['discount'], s['dotace_area']
 
     replacements = {
         '{code}':                 order.get('name', ''),
@@ -345,20 +529,6 @@ def generate_contract(order: dict, partner: dict, lines: list) -> bytes:
         '{priceWithoutDiscount}', '{discount}',
         '{Vyse_dotac_6d201}', '{Konecna_ce_0d59a}',
     }
+    replacements.update(extra_replacements or {})
     fill_items_table(doc, real_lines)
     replace_in_element(doc.element.body, replacements, bold_keys=bold_keys)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        docx_path = os.path.join(tmpdir, 'contract.docx')
-        pdf_path = os.path.join(tmpdir, 'contract.pdf')
-        doc.save(docx_path)
-
-        subprocess.run(
-            ['soffice', '--headless', '--convert-to', 'pdf', '--outdir', tmpdir, docx_path],
-            check=True,
-            timeout=60,
-            capture_output=True,
-        )
-
-        with open(pdf_path, 'rb') as f:
-            return f.read()

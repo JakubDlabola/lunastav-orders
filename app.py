@@ -9,12 +9,13 @@ import xmlrpc.client
 from datetime import date
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Query
+from fastapi import FastAPI, Form, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
 import zipfile
 
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
-from contract import generate_contract
+from contract import generate_contract, generate_dodatek, price_summary
 
 load_dotenv()
 
@@ -67,21 +68,34 @@ def _get_or_create_role(call_fn, name):
 _SIGN_ANCHOR = '◆'  # placed invisibly at centre of each signing box in the DOCX
 
 
-def _anchor_posY_on_page(page, label, fallback):
-    """Find the ◆ anchor on a pypdf page and return Odoo posY (0=top, 1=bottom)."""
+def _anchor_posYs_on_page(page):
+    """Odoo posY (0=top, 1=bottom) of the top edge of a sign box centred on each ◆ anchor of a pypdf page."""
     page_height = float(page.mediabox.height)
     anchor_ys = []
     def visitor(text_chunk, cm, tm, fontDict, fontSize):
         if text_chunk and _SIGN_ANCHOR in text_chunk:
             anchor_ys.append(tm[5])  # Y from bottom in PDF points
     page.extract_text(visitor_text=visitor)
-    if anchor_ys:
-        anchor_posY = 1.0 - (anchor_ys[0] / page_height)
-        posY = round(max(0.05, anchor_posY - 0.08), 3)
-        logging.warning(f'SIGN_ANCHOR {label}: anchor_posY={anchor_posY:.4f} → posY={posY}')
-        return posY
+    return [round(max(0.05, 1.0 - y / page_height - 0.08), 3) for y in anchor_ys]
+
+
+def _anchor_posY_on_page(page, label, fallback):
+    posYs = _anchor_posYs_on_page(page)
+    if posYs:
+        logging.warning(f'SIGN_ANCHOR {label}: posY={posYs[0]}')
+        return posYs[0]
     logging.warning(f'SIGN_ANCHOR {label}: not found, using fallback={fallback}')
     return fallback
+
+
+def _sign_locations(reader):
+    """(page_1based, posY) of every signing box, found from the ◆ anchors wherever they ended up."""
+    locations = []
+    for i, page in enumerate(reader.pages):
+        for posY in _anchor_posYs_on_page(page):
+            locations.append((i + 1, posY))
+    logging.warning(f'SIGN_ANCHOR locations: {locations}')
+    return locations
 
 
 def _find_contract_sig_page_and_posY(reader):
@@ -116,8 +130,9 @@ def _find_contract_sig_page_and_posY(reader):
 def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, client_email,
                          company_partner_id=None, company_email=None, salesperson_partner_id=None,
                          client_name='', crm_opportunity='', crm_tipar='', crm_obchodnik='',
-                         tipar_partner_id=None):
-    """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after."""
+                         tipar_partner_id=None, subject=None, extra_vals=None):
+    """Upload PDF to Odoo Sign and send signing request. Client signs first, LUNASTAV after.
+    order_name is the sign request's reference (P26… for contracts, DCZ26… for dodatky)."""
     company_partner_id = company_partner_id or _SIGN_COMPANY_PARTNER_ID
     company_email      = company_email      or _SIGN_COMPANY_EMAIL
 
@@ -136,13 +151,23 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         num_pages = len(re.findall(rb'/Type\s*/Page[^s]', pdf_bytes)) or 5
     last_page = num_pages
 
-    if _reader:
-        contract_sig_page, contract_sig_posY = _find_contract_sig_page_and_posY(_reader)
-        tc_sig_posY = _anchor_posY_on_page(
-            _reader.pages[last_page - 1], f'T&C p={last_page}', 0.73)
-    else:
-        contract_sig_page, contract_sig_posY = None, 0.47
-        tc_sig_posY = 0.73
+    sign_locations = _sign_locations(_reader) if _reader else []
+    if not sign_locations:
+        # No anchors found: old heuristic (contract signature page + last page)
+        if _reader:
+            contract_sig_page, contract_sig_posY = _find_contract_sig_page_and_posY(_reader)
+            tc_sig_posY = _anchor_posY_on_page(
+                _reader.pages[last_page - 1], f'T&C p={last_page}', 0.73)
+        else:
+            contract_sig_page, contract_sig_posY = None, 0.47
+            tc_sig_posY = 0.73
+        # If last_page is one past contract_sig_page, it's a blank overflow page — ignore it
+        effective_last = (contract_sig_page
+                          if contract_sig_page and last_page == contract_sig_page + 1
+                          else last_page)
+        if contract_sig_page and contract_sig_page != effective_last:
+            sign_locations.append((contract_sig_page, contract_sig_posY))
+        sign_locations.append((effective_last, tc_sig_posY))
 
     doc_prefix = f'{client_name} - {order_name}' if client_name else order_name
 
@@ -165,18 +190,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
         'num_pages': num_pages,
     }])
 
-    # 4. Place signature fields on both signature pages:
-    #    - Main contract page: Objednatel left (0.10), Zhotovitel right (0.55), mid-page
-    #    - T&C last page: same columns, near bottom
-    # If last_page is one past contract_sig_page, it's a blank overflow page — ignore it
-    effective_last = (contract_sig_page
-                      if contract_sig_page and last_page == contract_sig_page + 1
-                      else last_page)
-    sign_locations = []
-    if contract_sig_page and contract_sig_page != effective_last:
-        sign_locations.append((contract_sig_page, contract_sig_posY))
-    sign_locations.append((effective_last, tc_sig_posY))
-
+    # 4. Signature fields on every signing box: Objednatel left column, Zhotovitel right column
     for page_num, posY in sign_locations:
         for role_id, posX in [(client_role_id, 0.15), (company_role_id, 0.55)]:
             call('sign.item', 'create', [{
@@ -192,7 +206,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     create_vals = {
         'template_id': template_id,
         'reference': order_name,
-        'subject': f'LUNASTAV - potvrzení SOD {order_name} pro {client_name}' if client_name else f'LUNASTAV - potvrzení SOD {order_name}',
+        'subject': subject or (f'LUNASTAV - potvrzení SOD {order_name} pro {client_name}' if client_name else f'LUNASTAV - potvrzení SOD {order_name}'),
         'send_channel': 'email',
         'request_item_ids': [
             (0, 0, {'role_id': client_role_id,  'partner_id': client_partner_id}),
@@ -204,6 +218,7 @@ def _create_sign_request(call_fn, pdf_bytes, order_name, client_partner_id, clie
     if crm_opportunity: create_vals['x_crm_opportunity'] = crm_opportunity
     if crm_tipar:       create_vals['x_crm_tipar']       = crm_tipar
     if crm_obchodnik:   create_vals['x_crm_obchodnik']   = crm_obchodnik
+    create_vals.update(extra_vals or {})
     request_id = call('sign.request', 'create', [create_vals])
 
     # Subscribe salesperson and Tipař as followers so they can see this request
@@ -298,68 +313,39 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
 </body></html>"""
 
 
-@app.get('/order-form', response_class=HTMLResponse)
-def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int = Query(0), draft: str = Query(None)):
-    if key != SERVICE_KEY:
-        raise HTTPException(status_code=401, detail='Unauthorized')
+def _form_page(ctx):
+    """HTML of the order form; ctx['mode'] == 'dodatek' turns it into the dodatek form."""
+    order_id, order_name, key, test = ctx['order_id'], ctx['order_name'], ctx['key'], ctx['test']
+    partner_name, partner_street, partner_zip = ctx['partner_name'], ctx['partner_street'], ctx['partner_zip']
+    partner_city, partner_email, partner_phone = ctx['partner_city'], ctx['partner_email'], ctx['partner_phone']
+    partner_dob, zastavena_plocha = ctx['partner_dob'], ctx['zastavena_plocha']
+    remaining_grant_k, draft_json = ctx['remaining_grant_k'], ctx['draft_json']
 
-    uid, models = odoo_connect()
-
-    def call(model, method, args, kw={}):
-        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
-
-    orders = call('sale.order', 'read', [[order_id]], {'fields': ['name', 'partner_id', 'opportunity_id', 'user_id']})
-    if not orders:
-        raise HTTPException(status_code=404, detail=f'Objednávka {order_id} nenalezena')
-    order = orders[0]
-
-    partner_name = order['partner_id'][1] if order['partner_id'] else 'Neznámý zákazník'
-
-    _p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': ['name', 'email', 'phone', 'street', 'zip', 'city', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
-    partner_email  = _p.get('email') or ''
-    partner_phone  = _p.get('phone') or ''
-    partner_street = _p.get('street') or ''
-    partner_zip    = _p.get('zip') or ''
-    partner_city   = _p.get('city') or ''
-    _dob_raw       = _p.get('x_studio_datum_narozeni') or ''
-    try:
-        from datetime import date as _date
-        _d = _date.fromisoformat(_dob_raw)
-        partner_dob = f'{_d.day:02d}.{_d.month:02d}.{_d.year}'
-    except Exception:
-        partner_dob = ''
-
-    zastavena_plocha = ''
-    remaining_grant_k = '250000'
-    if order.get('opportunity_id'):
-        leads = call('crm.lead', 'read', [[order['opportunity_id'][0]]],
-                     {'fields': ['name', 'x_studio_zastavena_plocha']})
-        if leads:
-            lead = leads[0]
-            zastavena_plocha = lead.get('x_studio_zastavena_plocha') or ''
-            m = re.search(r'->\$(\d+)', lead['name'])
-            if m:
-                remaining_grant_k = str(int(m.group(1)) * 1000)
-
-    import json as _json
-    _draft_form = _drafts.get(draft, {}).get('form') if draft else None
-    if _draft_form:
-        if _draft_form.get('client_name'):   partner_name   = _draft_form['client_name']
-        if _draft_form.get('client_email'):  partner_email  = _draft_form['client_email']
-        if _draft_form.get('client_phone'):  partner_phone  = _draft_form['client_phone']
-        if _draft_form.get('client_street'): partner_street = _draft_form['client_street']
-        if _draft_form.get('client_zip'):    partner_zip    = _draft_form['client_zip']
-        if _draft_form.get('client_city'):   partner_city   = _draft_form['client_city']
-        if _draft_form.get('client_dob'):    partner_dob    = _draft_form['client_dob']
-        if 'remaining_grant_k' in _draft_form:
-            remaining_grant_k = _draft_form['remaining_grant_k']
-    draft_json = _json.dumps(_draft_form, ensure_ascii=True).replace('</', '<\\/') if _draft_form else 'null'
+    import html as _html
+    dodatek = ctx['mode'] == 'dodatek'
+    page_title = 'Dodatek ke smlouvě' if dodatek else 'Nová objednávka'
+    heading = f'Dodatek ke smlouvě o dílo {order_name}' if dodatek else 'Nová objednávka'
+    form_action = '/dodatek-form' if dodatek else '/order-form'
+    submit_label = 'Vytvořit dodatek' if dodatek else 'Vytvořit objednávku'
+    only_order = ' class="hidden"' if dodatek else ''
+    dodatek_block = ''
+    if dodatek:
+        dodatek_block = f"""
+    <div style="padding:10px 14px;background:#f3f6fb;border:1px solid #c9d6ea;border-radius:6px;margin-bottom:20px;font-size:13px;color:#33475b;">
+      Dodatek mění cenu, položky a platební podmínky smlouvy <strong>{_html.escape(order_name)}</strong>.
+      Formulář je předvyplněn podle smlouvy; objednávka v Odoo se nemění.
+      <div style="margin-top:10px;">
+        <label for="smlouva_datum" style="font-size:12px;color:#666;">Datum uzavření původní smlouvy</label>
+        <input type="text" name="smlouva_datum" id="smlouva_datum" value="{_html.escape(ctx.get('smlouva_datum') or '')}"
+               placeholder="DD.MM.RRRR" oninput="checkSubmit()">
+      </div>
+    </div>"""
 
     return f"""<!doctype html>
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <title>Nová objednávka</title>
+  <title>{page_title}</title>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; }}
     body {{ font-family: Arial, sans-serif; background: #f5f5f5; color: #333; margin: 0; padding: 20px; }}
@@ -406,8 +392,8 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 <div class="card">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px;">
     <div>
-      <h2 style="margin:0 0 2px;">Nová objednávka</h2>
-      <div class="subtitle" style="margin-bottom:0;">{partner_name} &middot; {order['name']}</div>
+      <h2 style="margin:0 0 2px;">{heading}</h2>
+      <div class="subtitle" style="margin-bottom:0;">{partner_name} &middot; {order_name}</div>
     </div>
     <button type="button" onclick="openHistoryOverlay()"
             style="font-size:13px;padding:7px 14px;border:1px solid #c8a840;border-radius:6px;
@@ -417,7 +403,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
   </div>
   {'<div style="background:#c00;color:#fff;font-size:12px;font-weight:bold;text-align:center;padding:4px 8px;border-radius:4px;margin-bottom:12px;">TEST REŽIM — podpis jde Tomáši Najmanovi</div>' if test else ''}
 
-  <form method="post" action="/order-form" id="mainForm">
+  <form method="post" action="{form_action}" id="mainForm">
     <input type="hidden" name="order_id" value="{order_id}">
     <input type="hidden" name="key" value="{key}">
     <input type="hidden" name="test" value="{test}">
@@ -440,6 +426,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     <input type="hidden" name="popis_dila_manual" id="inp_popis_dila_manual" value="">
     <input type="hidden" name="stavebni_pripravenost_manual" id="inp_stavebni_pripravenost_manual" value="">
 
+    {dodatek_block}
     <span class="field-label">Kontakt</span>
     <div style="display:grid;gap:8px;margin-bottom:20px;">
       <div>
@@ -472,7 +459,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
         <label style="font-size:12px;color:#888;">Datum narození</label>
         <input type="text" name="client_dob" value="{partner_dob}" placeholder="DD.MM.RRRR">
       </div>
-      <div style="margin-top:4px;">
+      <div{only_order} style="margin-top:4px;">
         <div style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" id="addr_same" name="addr_same" value="1" checked
                  onchange="document.getElementById('addr-custom').classList.toggle('hidden',this.checked)"
@@ -649,7 +636,7 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
       <input type="text" name="termin_dokonceni" id="termin_dokonceni" readonly style="margin-top:8px; width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px;" placeholder="Termín bude sestaven po výběru výše">
     </div>
 
-    <div style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
+    <div{only_order} style="margin-top:20px;border-top:1px solid #eee;padding-top:20px;">
       <div class="field-label-row">
         <span class="field-label">Popis díla</span>
         <button type="button" id="edit-btn-popis_dila" class="edit-toggle-btn" onclick="toggleManual('popis_dila', updatePopisDila)" title="Upravit ručně">✎ Upravit</button>
@@ -668,10 +655,11 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 
 
     <div id="missing-list" class="hidden"></div>
-    <button type="submit" id="submitBtn" disabled>Vytvořit objednávku</button>
+    <button type="submit" id="submitBtn" disabled>{submit_label}</button>
   </form>
 </div>
 <script>
+const IS_DODATEK = {'true' if dodatek else 'false'};
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751}};
 const WIN_RATES = {{a: 9000, b: 9900, c: 10800}};
@@ -829,7 +817,7 @@ function onTypesChange() {{
   const anyType = hasRoof || hasCeil || hasSikminy || hasDoors || hasWin;
   document.getElementById('split-section').classList.toggle('hidden', !anyType);
   document.getElementById('termin-zalohy-section').classList.toggle('hidden', !anyType);
-  document.getElementById('termin-section').classList.toggle('hidden', !anyType);
+  document.getElementById('termin-section').classList.toggle('hidden', !anyType || IS_DODATEK);
   const winOnly = hasWin && !hasRoof && !hasCeil && !hasSikminy && !hasDoors;
   document.getElementById('split-80-20').classList.toggle('hidden', !hasWin);
   document.querySelectorAll('#split-opts label:not(#split-80-20)').forEach(l => l.classList.toggle('hidden', winOnly));
@@ -932,7 +920,7 @@ function calc() {{
   const blindsCost = Math.round(1000 * qBlinds);
   const netsCost   = Math.round(1000 * qNets);
 
-  const _firstName = ((document.getElementById('inp_client_name')?.value || '').trim().split(/\s+/)[0] || '');
+  const _firstName = ((document.getElementById('inp_client_name')?.value || '').trim().split(/\\s+/)[0] || '');
   const DOPRAVA = 100 + 21 * _firstName.length;
   let eRoof = 0, eCeil = 0, eSimkiny = 0, grantReceived = 0, floorHit = false, roofFloorHit = false, ceilFloorHit = false, sikminyFloorHit = false;
   if (!hasGrant()) {{
@@ -1107,8 +1095,8 @@ function checkSubmit() {{
                  + parseFloat(document.getElementById('inp_elig_win_c').value   || 0);
     const terminDays   = document.querySelector('input[name=termin_days]:checked');
     const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
-    const clientPhone  = (document.getElementById('client_phone')?.value || '').replace(/[\s\-().+]/g, '');
-    const phoneOk = /^\d{{9,}}$/.test(clientPhone);
+    const clientPhone  = (document.getElementById('client_phone')?.value || '').replace(/[\\s\\-().+]/g, '');
+    const phoneOk = /^\\d{{9,}}$/.test(clientPhone);
 
     if (hasRoof    && !matRoof)       missing.push('Vyberte materiál střechy');
     if (hasRoof    && qRoof <= 0)     missing.push('Zadejte plochu střechy (m²)');
@@ -1119,7 +1107,9 @@ function checkSubmit() {{
     if (hasDoors   && qDoors   <= 0)   missing.push('Zadejte plochu dveří (m²)');
     if (hasWin     && qWinTot <= 0)   missing.push('Zadejte plochu oken (m²)');
     if (!winOnly && !split)     missing.push('Vyberte způsob platby (záloha / doplatek)');
-    if (!terminDays)            missing.push('Vyberte termín dokončení');
+    if (!terminDays && !IS_DODATEK) missing.push('Vyberte termín dokončení');
+    if (IS_DODATEK && !/^\\s*\\d{{1,2}}\\s*\\.\\s*\\d{{1,2}}\\s*\\.\\s*\\d{{4}}\\s*$/.test(document.getElementById('smlouva_datum').value))
+      missing.push('Zadejte datum uzavření původní smlouvy (DD.MM.RRRR)');
     if (!terminZalohy2)         missing.push('Vyberte termín splatnosti zálohy');
     if (!phoneOk)               missing.push('Zadejte platné telefonní číslo (min. 9 číslic)');
     if (eTotal <= 0 && missing.length === 0) missing.push('Vypočítejte cenu před odesláním');
@@ -1385,6 +1375,71 @@ document.addEventListener('DOMContentLoaded', function() {{
 </html>"""
 
 
+@app.get('/order-form', response_class=HTMLResponse)
+def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int = Query(0), draft: str = Query(None)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+
+    uid, models = odoo_connect()
+
+    def call(model, method, args, kw={}):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+
+    orders = call('sale.order', 'read', [[order_id]], {'fields': ['name', 'partner_id', 'opportunity_id', 'user_id']})
+    if not orders:
+        raise HTTPException(status_code=404, detail=f'Objednávka {order_id} nenalezena')
+    order = orders[0]
+
+    partner_name = order['partner_id'][1] if order['partner_id'] else 'Neznámý zákazník'
+
+    _p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': ['name', 'email', 'phone', 'street', 'zip', 'city', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
+    partner_email  = _p.get('email') or ''
+    partner_phone  = _p.get('phone') or ''
+    partner_street = _p.get('street') or ''
+    partner_zip    = _p.get('zip') or ''
+    partner_city   = _p.get('city') or ''
+    _dob_raw       = _p.get('x_studio_datum_narozeni') or ''
+    try:
+        from datetime import date as _date
+        _d = _date.fromisoformat(_dob_raw)
+        partner_dob = f'{_d.day:02d}.{_d.month:02d}.{_d.year}'
+    except Exception:
+        partner_dob = ''
+
+    zastavena_plocha = ''
+    remaining_grant_k = '250000'
+    if order.get('opportunity_id'):
+        leads = call('crm.lead', 'read', [[order['opportunity_id'][0]]],
+                     {'fields': ['name', 'x_studio_zastavena_plocha']})
+        if leads:
+            lead = leads[0]
+            zastavena_plocha = lead.get('x_studio_zastavena_plocha') or ''
+            m = re.search(r'->\$(\d+)', lead['name'])
+            if m:
+                remaining_grant_k = str(int(m.group(1)) * 1000)
+
+    import json as _json
+    _draft_form = _drafts.get(draft, {}).get('form') if draft else None
+    if _draft_form:
+        if _draft_form.get('client_name'):   partner_name   = _draft_form['client_name']
+        if _draft_form.get('client_email'):  partner_email  = _draft_form['client_email']
+        if _draft_form.get('client_phone'):  partner_phone  = _draft_form['client_phone']
+        if _draft_form.get('client_street'): partner_street = _draft_form['client_street']
+        if _draft_form.get('client_zip'):    partner_zip    = _draft_form['client_zip']
+        if _draft_form.get('client_city'):   partner_city   = _draft_form['client_city']
+        if _draft_form.get('client_dob'):    partner_dob    = _draft_form['client_dob']
+        if 'remaining_grant_k' in _draft_form:
+            remaining_grant_k = _draft_form['remaining_grant_k']
+    draft_json = _json.dumps(_draft_form, ensure_ascii=True).replace('</', '<\\/') if _draft_form else 'null'
+
+    return _form_page(dict(
+        mode='order', order_id=order_id, order_name=order['name'], key=key, test=test,
+        partner_name=partner_name, partner_street=partner_street, partner_zip=partner_zip,
+        partner_city=partner_city, partner_email=partner_email, partner_phone=partner_phone,
+        partner_dob=partner_dob, zastavena_plocha=zastavena_plocha,
+        remaining_grant_k=remaining_grant_k, draft_json=draft_json))
+
+
 @app.post('/order-form', response_class=HTMLResponse)
 def order_form_post(
     order_id: int = Form(...),
@@ -1506,40 +1561,21 @@ def order_form_post(
 </body></html>""")
 
 
-def _order_form_post_inner(
-    order_id, key, test,
-    has_roof, has_ceiling, has_windows, has_sikminy, has_doors,
-    material_roof, material_ceiling, material_sikminy,
-    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy, qty_m2_doors,
-    qty_win_a, qty_win_b, qty_win_c,
-    has_blinds, qty_blinds, has_nets, qty_nets,
-    eligible_roof, eligible_ceiling,
-    eligible_win_a, eligible_win_b, eligible_win_c,
-    eligible_sikminy, eligible_doors,
-    discount_pct_roof, discount_pct_ceiling,
-    grant_amount, split,
-    extra_5000a, extra_5000b, extra_5000c,
-    qty_5100, qty_5101,
-    addr_same, adresa_realizace, popis_dila,
-    thickness_roof, thickness_ceiling, thickness_sikminy,
-    termin_dokonceni, termin_zalohy_2,
-    stavebni_pripravenost,
-    client_name, client_street, client_zip,
-    client_city, client_email, client_phone,
-    client_dob,
-    custom_items='[]',
-    grant_enabled_val='1',
-    remaining_grant_k_val='',
-    termin_days_val='',
-    termin_cond_val='',
-    termin_dokonceni_manual='',
-    popis_dila_manual='',
-    stavebni_pripravenost_manual='',
-):
-    uid, models = odoo_connect()
-
-    def call(model, method, args, kw={}):
-        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+def _compute_order(call, f):
+    """Order lines (sale.order.line create values) and payment totals for the submitted form.
+    Shared by the order form (writes them to the order) and the dodatek form (keeps them local)."""
+    client_name, custom_items, split, grant_amount = f['client_name'], f['custom_items'], f['split'], f['grant_amount']
+    has_roof, has_ceiling, has_sikminy = f['has_roof'], f['has_ceiling'], f['has_sikminy']
+    has_doors, has_windows, has_blinds, has_nets = f['has_doors'], f['has_windows'], f['has_blinds'], f['has_nets']
+    material_roof, material_ceiling, material_sikminy = f['material_roof'], f['material_ceiling'], f['material_sikminy']
+    thickness_roof, thickness_ceiling, thickness_sikminy = f['thickness_roof'], f['thickness_ceiling'], f['thickness_sikminy']
+    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy, qty_m2_doors = f['qty_m2_roof'], f['qty_m2_ceiling'], f['qty_m2_sikminy'], f['qty_m2_doors']
+    qty_win_a, qty_win_b, qty_win_c = f['qty_win_a'], f['qty_win_b'], f['qty_win_c']
+    qty_blinds, qty_nets, qty_5100, qty_5101 = f['qty_blinds'], f['qty_nets'], f['qty_5100'], f['qty_5101']
+    extra_5000a, extra_5000b, extra_5000c = f['extra_5000a'], f['extra_5000b'], f['extra_5000c']
+    eligible_roof, eligible_ceiling, eligible_sikminy = f['eligible_roof'], f['eligible_ceiling'], f['eligible_sikminy']
+    eligible_doors = f['eligible_doors']
+    eligible_win_a, eligible_win_b, eligible_win_c = f['eligible_win_a'], f['eligible_win_b'], f['eligible_win_c']
 
     TAX_RATE = 1.12
     LISTED = {'roof': 2002, 'ceiling': 751, 'windows': 8000}
@@ -1571,7 +1607,7 @@ def _order_form_post_inner(
     _first_name = (client_name or '').split()[0] if client_name else ''
     doprava_price = 100 + 21 * len(_first_name)
 
-    order_lines = [(5, 0, 0)]
+    order_lines = []
 
     COSMETIC_DISC = 3.0  # always show 3% discount; price_unit inflated to compensate
 
@@ -1787,9 +1823,56 @@ def _order_form_post_inner(
     zaloha   = round(total_for_split * split_pct[0] / 100)
     doplatek = round(total_for_split * split_pct[1] / 100)
     client_pays = round(total_for_split - grant_amount)
+    insul_area = ((float(qty_m2_roof or 0) if has_roof else 0) + (float(qty_m2_ceiling or 0) if has_ceiling else 0)
+                  + (float(qty_m2_sikminy or 0) if has_sikminy else 0))
+    return {
+        'lines': [cmd[2] for cmd in order_lines], 'zaloha': zaloha, 'doplatek': doplatek,
+        'client_pays': client_pays, 'grant_amount': grant_amount, 'insul_area': insul_area,
+        'split_pct': split_pct,
+    }
+
+
+def _order_form_post_inner(
+    order_id, key, test,
+    has_roof, has_ceiling, has_windows, has_sikminy, has_doors,
+    material_roof, material_ceiling, material_sikminy,
+    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy, qty_m2_doors,
+    qty_win_a, qty_win_b, qty_win_c,
+    has_blinds, qty_blinds, has_nets, qty_nets,
+    eligible_roof, eligible_ceiling,
+    eligible_win_a, eligible_win_b, eligible_win_c,
+    eligible_sikminy, eligible_doors,
+    discount_pct_roof, discount_pct_ceiling,
+    grant_amount, split,
+    extra_5000a, extra_5000b, extra_5000c,
+    qty_5100, qty_5101,
+    addr_same, adresa_realizace, popis_dila,
+    thickness_roof, thickness_ceiling, thickness_sikminy,
+    termin_dokonceni, termin_zalohy_2,
+    stavebni_pripravenost,
+    client_name, client_street, client_zip,
+    client_city, client_email, client_phone,
+    client_dob,
+    custom_items='[]',
+    grant_enabled_val='1',
+    remaining_grant_k_val='',
+    termin_days_val='',
+    termin_cond_val='',
+    termin_dokonceni_manual='',
+    popis_dila_manual='',
+    stavebni_pripravenost_manual='',
+):
+    uid, models = odoo_connect()
+
+    def call(model, method, args, kw={}):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
+
+    _c = _compute_order(call, dict(locals()))
+    order_lines = [(5, 0, 0)] + [(0, 0, vals) for vals in _c['lines']]
+    zaloha, doplatek, client_pays = _c['zaloha'], _c['doplatek'], _c['client_pays']
+    insul_area = _c['insul_area']
 
     addr_value = 'shodné s trvalou adresou' if addr_same else (adresa_realizace or '')
-    insul_area = (float(qty_m2_roof or 0) if has_roof else 0) + (float(qty_m2_ceiling or 0) if has_ceiling else 0) + (float(qty_m2_sikminy or 0) if has_sikminy else 0)
 
     # If the order was already confirmed (state='sale'), reset it to draft first so we can
     # replace its lines; confirmed orders reject the (5,0,0) line-deletion command.
@@ -2229,6 +2312,531 @@ def history_load(log_id: str, key: str = Query(...)):
         pass
     raise HTTPException(status_code=404, detail='Entry not found')
 
+
+# ── Dodatek ke smlouvě o dílo ────────────────────────────────────────────────
+# Same form as the order, minus the fields the dodatek template doesn't have. The order itself is never
+# written to: lines and totals are computed here and kept on an x_cz_dodatek record (setup_dodatek.py).
+
+_DODATEK_SEQ_CODE = 'lunastav.cz.dodatek'   # DCZ + yy + 4 digits, restarts every year
+_CZK_ID = 9
+_CUSTOM_UOM = {1: 'ks', 9: 'm', 11: 'm2'}
+_DODATEK_ORDER_FIELDS = ['name', 'state', 'partner_id', 'opportunity_id', 'user_id', 'order_line',
+                         'x_studio_datum_podpisu_smlouvy', 'x_studio_termin_zalohy_2',
+                         'x_studio_zaloha_kc', 'x_studio_doplatek_kc', 'x_studio_vyse_dotace_kc']
+# form fields as the order form posts them (FastAPI Form() defaults of order_form_post)
+_FORM_FLOATS = ('eligible_roof', 'eligible_ceiling', 'eligible_win_a', 'eligible_win_b', 'eligible_win_c',
+                'eligible_sikminy', 'eligible_doors', 'discount_pct_roof', 'discount_pct_ceiling', 'grant_amount')
+_FORM_NONES = ('material_roof', 'material_ceiling', 'material_sikminy', 'split', 'termin_zalohy_2')
+_FORM_STRS = ('has_roof', 'has_ceiling', 'has_windows', 'has_sikminy', 'has_doors',
+              'qty_m2_roof', 'qty_m2_ceiling', 'qty_m2_sikminy', 'qty_m2_doors', 'qty_win_a', 'qty_win_b', 'qty_win_c',
+              'has_blinds', 'qty_blinds', 'has_nets', 'qty_nets', 'extra_5000a', 'extra_5000b', 'extra_5000c',
+              'qty_5100', 'qty_5101', 'thickness_roof', 'thickness_ceiling', 'thickness_sikminy',
+              'client_name', 'client_street', 'client_zip', 'client_city', 'client_email', 'client_phone',
+              'client_dob', 'grant_enabled_val', 'remaining_grant_k_val', 'smlouva_datum')
+
+
+def _odoo_call():
+    uid, models = odoo_connect()
+
+    def call(model, method, args, kw=None):
+        return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw or {})
+    return call
+
+
+def _cz_date(iso):
+    m = re.match(r'(\d{4})-(\d{2})-(\d{2})', iso or '')
+    return f'{m.group(3)}.{m.group(2)}.{m.group(1)}' if m else ''
+
+
+def _iso_date(text):
+    m = re.fullmatch(r'\s*(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})\s*', text or '')
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1))).isoformat()
+    except ValueError:
+        return None
+
+
+def _error_html(title, tb):
+    import html as _html
+    return HTMLResponse(status_code=500, content=f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Chyba</title></head>
+<body style="font-family:monospace;padding:24px;background:#fff8f8;">
+<h2 style="color:#c00;">{_html.escape(title)}</h2>
+<pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:13px;">{_html.escape(tb)}</pre>
+</body></html>""")
+
+
+def _message_html(title, text, status=400):
+    import html as _html
+    return HTMLResponse(status_code=status, content=f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>{_html.escape(title)}</title></head>
+<body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
+  <div style="background:#fff;border-radius:8px;padding:40px;max-width:520px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+    <h2 style="margin:0 0 12px;">{_html.escape(title)}</h2>
+    <p style="color:#555;font-size:14px;">{_html.escape(text)}</p>
+  </div>
+</body></html>""")
+
+
+def _sign_link_html(sign_url):
+    """Big ZOBRAZIT DOKUMENT button + QR code of the client's signing link."""
+    if not sign_url:
+        return ''
+    qr_html = ''
+    try:
+        import segno as _segno
+        buf = io.BytesIO()
+        _segno.make(sign_url, error='H').save(buf, kind='svg', scale=6, border=2)
+        qr_html = (f'<p style="margin-top:28px;color:#888;font-size:13px;">nebo naskenujte QR kód telefonem:</p>'
+                   f'<div style="display:inline-block;padding:12px;background:#fff;border:1px solid #e0e0e0;'
+                   f'border-radius:8px;margin-top:4px;">{buf.getvalue().decode("utf-8")}</div>')
+    except Exception:
+        pass
+    return (f'<a href="{sign_url}" target="_blank" style="display:inline-block;margin-top:20px;padding:19px 42px;'
+            f'background:#c8a840;color:#fff;text-decoration:none;border-radius:6px;font-size:22px;'
+            f'font-weight:bold;letter-spacing:1px;">ZOBRAZIT DOKUMENT</a>{qr_html}')
+
+
+def _dodatek_number_preview(call):
+    """Number the next dodatek will get (not consumed)."""
+    today = date.today().isoformat()
+    rng = call('ir.sequence.date_range', 'search_read', [[
+        ('sequence_id.code', '=', _DODATEK_SEQ_CODE), ('date_from', '<=', today), ('date_to', '>=', today)]],
+        {'fields': ['number_next_actual'], 'limit': 1})
+    return f'DCZ{date.today():%y}{(rng[0]["number_next_actual"] if rng else 1):04d}'
+
+
+def _dodatek_number_take(call):
+    number = call('ir.sequence', 'next_by_code', [_DODATEK_SEQ_CODE])
+    if not number:
+        raise RuntimeError(f'Číselná řada {_DODATEK_SEQ_CODE} v Odoo chybí (spusťte setup_dodatek.py).')
+    return number
+
+
+def _contract_signed_date(call, order):
+    """Date the original contract was signed: completed sign request of the order, else its contract date."""
+    reqs = call('sign.request', 'search_read', [[('reference', '=', order['name']), ('state', '=', 'signed')]],
+                {'fields': ['completion_date'], 'order': 'id desc', 'limit': 1})
+    if reqs and reqs[0].get('completion_date'):
+        return str(reqs[0]['completion_date'])[:10]
+    return order.get('x_studio_datum_podpisu_smlouvy') or ''
+
+
+def _logged_form(order_id):
+    """Form state of the latest order form / dodatek submitted for this order (orders_log.jsonl)."""
+    import json as _json2
+    form = None
+    try:
+        with open(_LOG_FILE, 'r', encoding='utf-8') as _lf:
+            for raw in _lf:
+                try:
+                    entry = _json2.loads(raw)
+                except Exception:
+                    continue
+                if str(entry.get('order_id')) == str(order_id) and entry.get('form'):
+                    form = entry['form']
+    except FileNotFoundError:
+        pass
+    return form
+
+
+def _form_from_order(call, order):
+    """Form values rebuilt from the order lines, for orders that never went through the logged form."""
+    import json as _json2
+    lines = call('sale.order.line', 'read', [order['order_line']], {'fields': [
+        'product_id', 'name', 'product_uom_qty', 'product_uom_id', 'price_unit', 'display_type']})
+    pids = list({ln['product_id'][0] for ln in lines if ln.get('product_id')})
+    codes = {p['id']: (p.get('default_code') or '').upper()
+             for p in call('product.product', 'read', [pids], {'fields': ['default_code']})} if pids else {}
+    materials = {'3000': 'thermofloc', '3100': 'supafil', '3200': 'strikana'}
+    kinds = {'A': 'roof', 'B': 'ceiling', 'C': 'sikminy'}
+    f, custom = {}, []
+    for ln in lines:
+        if ln.get('display_type') or not ln.get('product_id'):
+            continue
+        code = codes.get(ln['product_id'][0], '')
+        qty = ln.get('product_uom_qty') or 0
+        q = str(int(qty)) if qty == int(qty) else str(qty)
+        if code[:4] in materials and code[4:] in kinds:
+            kind = kinds[code[4:]]
+            f.update({f'has_{kind}': True, f'material_{kind}': materials[code[:4]], f'qty_m2_{kind}': q})
+            th = re.search(r'(\d+)\s*cm', ln.get('name') or '')
+            if th:
+                f[f'thickness_{kind}'] = th.group(1)
+        elif code == '4100':
+            f.update({'has_doors': True, 'qty_m2_doors': q})
+        elif code in ('4000A', '4000B', '4000C'):
+            f.update({'has_windows': True, f'qty_win_{code[-1].lower()}': q})
+        elif code == '4001A':
+            f.update({'has_blinds': True, 'qty_blinds': q})
+        elif code == '4001B':
+            f.update({'has_nets': True, 'qty_nets': q})
+        elif code in ('5100', '5101'):
+            f[f'qty_{code}'] = q
+        elif code in ('5000A', '5000B', '5000C'):
+            f[f'extra_{code.lower()}'] = True
+        elif code == 'XXX':
+            uom = (ln.get('product_uom_id') or [1])[0]
+            custom.append({'desc': ln.get('name') or '', 'qty': qty, 'unit': _CUSTOM_UOM.get(uom, 'ks'),
+                           'price': ln.get('price_unit') or 0})
+    if custom:
+        f['custom_items'] = _json2.dumps(custom, ensure_ascii=False)
+    zaloha, doplatek = order.get('x_studio_zaloha_kc') or 0, order.get('x_studio_doplatek_kc') or 0
+    if zaloha + doplatek:
+        pct = zaloha / (zaloha + doplatek) * 100
+        f['split'] = min(('80-20', '60-40', '20-80', '0-100'), key=lambda s: abs(int(s.split('-')[0]) - pct))
+    f['termin_zalohy_2'] = order.get('x_studio_termin_zalohy_2') or ''
+    f['grant_enabled'] = bool(order.get('x_studio_vyse_dotace_kc'))
+    return f
+
+
+def _round_half_up(value):
+    """Odoo's float_round to 0.01 (halves away from zero, tolerant of binary representation error)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    return float(Decimal(repr(value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+
+def _dodatek_lines(call, vals_list):
+    """sale.order.line-like dicts for the PDF (what Odoo would compute for these create values) + totals."""
+    pids = list({v['product_id'] for v in vals_list})
+    prods = {p['id']: p for p in call('product.product', 'read', [pids],
+                                      {'fields': ['display_name', 'default_code', 'uom_id', 'taxes_id']})}
+    uom_ids = {v.get('product_uom_id') or prods[v['product_id']]['uom_id'][0] for v in vals_list}
+    uoms = {u['id']: u['name'] for u in call('uom.uom', 'read', [list(uom_ids)], {'fields': ['name']})}
+    tax_ids = list({t for p in prods.values() for t in p['taxes_id']})
+    taxes = {t['id']: t for t in call('account.tax', 'read', [tax_ids], {
+        'fields': ['amount', 'amount_type', 'price_include', 'company_id']})} if tax_ids else {}
+    lines, base_per_group, base_per_tax = [], {}, {}
+    for v in vals_list:
+        p = prods[v['product_id']]
+        qty, price, disc = float(v['product_uom_qty']), float(v['price_unit']), float(v.get('discount') or 0)
+        base = price * (1 - disc / 100) * qty
+        line_taxes = [t for t in p['taxes_id'] if t in taxes and (taxes[t]['company_id'] or [1])[0] == 1]
+        if any(taxes[t]['amount_type'] != 'percent' or taxes[t]['price_include'] for t in line_taxes):
+            raise RuntimeError(f'Produkt {p["display_name"]} má daň, kterou dodatek neumí spočítat.')
+        uom_id = v.get('product_uom_id') or p['uom_id'][0]
+        lines.append({'product_id': [p['id'], p['display_name']], 'code': p.get('default_code') or '',
+                      'name': v.get('name') or p['display_name'], 'product_uom_qty': qty,
+                      'product_uom_id': [uom_id, uoms.get(uom_id, '')], 'price_unit': price,
+                      'discount': disc, 'price_subtotal': _round_half_up(base)})
+        group = tuple(sorted(line_taxes))
+        base_per_group[group] = base_per_group.get(group, 0.0) + base
+        for t in line_taxes:
+            base_per_tax[t] = base_per_tax.get(t, 0.0) + base
+    # Odoo's order totals with taxes rounded globally: unrounded line amounts, one rounding per tax group
+    untaxed = _round_half_up(sum(_round_half_up(b) for b in base_per_group.values()))
+    tax = _round_half_up(sum(_round_half_up(b * taxes[t]['amount'] / 100) for t, b in base_per_tax.items()))
+    return lines, {'amount_untaxed': untaxed, 'amount_tax': tax, 'amount_total': _round_half_up(untaxed + tax)}
+
+
+def _crm_info(call, order):
+    info = {'opportunity': '', 'tipar': '', 'obchodnik': '', 'tipar_partner_id': None,
+            'salesperson_partner_id': None, 'lead_id': None}
+    if order.get('opportunity_id'):
+        lead = call('crm.lead', 'read', [[order['opportunity_id'][0]]], {'fields': ['name', 'user_id', 'x_studio_tipar_3']})
+        if lead:
+            lead = lead[0]
+            info.update(lead_id=lead['id'], opportunity=lead.get('name') or '',
+                        obchodnik=(lead.get('user_id') or [None, ''])[1] or '',
+                        tipar=(lead.get('x_studio_tipar_3') or [None, ''])[1] or '')
+            tipar_uid = (lead.get('x_studio_tipar_3') or [None])[0]
+            if tipar_uid:
+                tu = call('res.users', 'read', [[tipar_uid]], {'fields': ['partner_id']})
+                if tu:
+                    info['tipar_partner_id'] = tu[0]['partner_id'][0]
+    if order.get('user_id'):
+        su = call('res.users', 'read', [[order['user_id'][0]]], {'fields': ['partner_id']})
+        if su:
+            info['salesperson_partner_id'] = su[0]['partner_id'][0]
+    return info
+
+
+def _partner_for_document(call, partner_id, f):
+    """Client as printed on the document (form values win) + the changes to write back on confirm."""
+    partner = call('res.partner', 'read', [[partner_id]], {'fields': [
+        'name', 'street', 'zip', 'city', 'email', 'phone', 'x_studio_datum_narozeni']})[0]
+    for field in ('name', 'street', 'zip', 'city'):
+        if f.get(f'client_{field}'):
+            partner[field] = f[f'client_{field}']
+    patch = {}
+    if f.get('client_email'):
+        patch['email'] = f['client_email']
+    if not partner.get('phone') and f.get('client_phone'):
+        patch['phone'] = f['client_phone']
+    if not partner.get('x_studio_datum_narozeni') and f.get('client_dob'):
+        dob = _iso_date(f['client_dob'].replace('/', '.'))
+        if dob:
+            patch['x_studio_datum_narozeni'] = dob
+    partner.update(patch)
+    if not partner.get('email') or '@' not in partner['email']:
+        raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání dodatku k podpisu.')
+    return partner, patch
+
+
+@app.get('/dodatek-form', response_class=HTMLResponse)
+def dodatek_form_get(order_id: int = Query(...), key: str = Query(...), test: int = Query(0), draft: str = Query(None)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+    import json as _json2
+    call = _odoo_call()
+    orders = call('sale.order', 'read', [[order_id]], {'fields': _DODATEK_ORDER_FIELDS})
+    if not orders:
+        raise HTTPException(status_code=404, detail=f'Objednávka {order_id} nenalezena')
+    order = orders[0]
+    if order['state'] not in ('sent', 'sale'):
+        return _message_html('Dodatek nelze vytvořit',
+                             f'K objednávce {order["name"]} zatím nebyla odeslána smlouva. '
+                             'Dodatek lze vytvořit jen ke smlouvě, která už byla odeslána nebo podepsána.')
+
+    p = call('res.partner', 'read', [[order['partner_id'][0]]], {'fields': [
+        'name', 'email', 'phone', 'street', 'zip', 'city', 'x_studio_datum_narozeni']})[0] if order['partner_id'] else {}
+    ctx = {
+        'mode': 'dodatek', 'order_id': order_id, 'order_name': order['name'], 'key': key, 'test': test,
+        'partner_name': p.get('name') or '', 'partner_street': p.get('street') or '', 'partner_zip': p.get('zip') or '',
+        'partner_city': p.get('city') or '', 'partner_email': p.get('email') or '', 'partner_phone': p.get('phone') or '',
+        'partner_dob': _cz_date(p.get('x_studio_datum_narozeni') or ''),
+        'zastavena_plocha': '', 'remaining_grant_k': '250000',
+        'smlouva_datum': _cz_date(_contract_signed_date(call, order)),
+    }
+    if order.get('opportunity_id'):
+        lead = call('crm.lead', 'read', [[order['opportunity_id'][0]]], {'fields': ['name', 'x_studio_zastavena_plocha']})
+        if lead:
+            ctx['zastavena_plocha'] = lead[0].get('x_studio_zastavena_plocha') or ''
+            m = re.search(r'->\$(\d+)', lead[0]['name'] or '')
+            if m:
+                ctx['remaining_grant_k'] = str(int(m.group(1)) * 1000)
+
+    form = _drafts.get(draft, {}).get('form') if draft else None
+    if form:
+        for field in ('name', 'street', 'zip', 'city', 'email', 'phone', 'dob'):
+            if form.get(f'client_{field}'):
+                ctx[f'partner_{field}'] = form[f'client_{field}']
+        ctx['smlouva_datum'] = form.get('smlouva_datum') or ctx['smlouva_datum']
+    else:
+        form = _logged_form(order_id) or _form_from_order(call, order)
+        form = {k: v for k, v in form.items() if not k.startswith('client_')}  # contact comes from the partner
+    if 'remaining_grant_k' in form:
+        ctx['remaining_grant_k'] = form['remaining_grant_k']
+    ctx['draft_json'] = _json2.dumps(form, ensure_ascii=True).replace('</', '<\\/')
+    return _form_page(ctx)
+
+
+@app.post('/dodatek-form', response_class=HTMLResponse)
+async def dodatek_form_post(request: Request):
+    raw = await request.form()
+    if raw.get('key') != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+    f = {k: raw.get(k, '') for k in _FORM_STRS}
+    f.update({k: raw.get(k) or None for k in _FORM_NONES})
+    f.update({k: float(raw.get(k) or 0) for k in _FORM_FLOATS})
+    f.update(order_id=int(raw.get('order_id')), key=raw.get('key'), test=int(raw.get('test') or 0),
+             custom_items=raw.get('custom_items') or '[]')
+    import traceback as _tb
+    try:
+        return await run_in_threadpool(_dodatek_preview, f)
+    except HTTPException:
+        raise
+    except Exception:
+        logging.error('dodatek_form_post error:\n' + _tb.format_exc())
+        return _error_html('Chyba při zpracování dodatku', _tb.format_exc())
+
+
+def _dodatek_preview(f):
+    import uuid as _uuid, time as _time
+    call = _odoo_call()
+    order = call('sale.order', 'read', [[f['order_id']]], {'fields': _DODATEK_ORDER_FIELDS})[0]
+    if not any(f.get(k) for k in ('has_roof', 'has_ceiling', 'has_sikminy', 'has_doors', 'has_windows')):
+        raise HTTPException(status_code=400, detail='Zadejte alespoň jeden typ práce')
+    smlouva_datum = _iso_date(f.get('smlouva_datum'))
+    if not smlouva_datum:
+        raise HTTPException(status_code=400, detail='Neplatné datum uzavření původní smlouvy (DD.MM.RRRR).')
+
+    c = _compute_order(call, f)
+    lines, totals = _dodatek_lines(call, c['lines'])
+    partner, patch = _partner_for_document(call, order['partner_id'][0], f)
+    doc_order = {
+        'name': order['name'], **totals,
+        'x_studio_zaloha_kc': c['zaloha'], 'x_studio_doplatek_kc': c['doplatek'],
+        'x_studio_termin_zalohy_2': f.get('termin_zalohy_2') or '',
+        'x_studio_vyse_dotace_kc': round(c['grant_amount']),
+        'x_studio_cena_po_odecteni_dotace': max(0, c['client_pays']),
+        'x_studio_float_field_45q_1jsh2tmcd': c['insul_area'],
+        'x_studio_datum_podpisu_smlouvy': date.today().isoformat(),
+    }
+    number = _dodatek_number_preview(call)
+    pdf_bytes = generate_dodatek(doc_order, partner, lines, number, order['name'], smlouva_datum)
+
+    cutoff = _time.time() - 7200
+    for k in [k for k, v in list(_drafts.items()) if v.get('created', 0) < cutoff]:
+        _drafts.pop(k, None)
+    token = _uuid.uuid4().hex
+    form_snapshot = {k: f[k] for k in _FORM_STRS + _FORM_NONES if f.get(k) not in (None, '')}
+    form_snapshot.update({k: bool(f.get(k)) for k in (
+        'has_roof', 'has_ceiling', 'has_sikminy', 'has_doors', 'has_windows', 'has_blinds', 'has_nets',
+        'extra_5000a', 'extra_5000b', 'extra_5000c')})
+    form_snapshot.update(custom_items=f['custom_items'],
+                         grant_enabled=f.get('grant_enabled_val') not in ('', '0', 'false', 'False'),
+                         remaining_grant_k=f.get('remaining_grant_k_val') or '')
+    _drafts[token] = {
+        'created': _time.time(), 'kind': 'dodatek', 'order_id': f['order_id'], 'order': order, 'test': f['test'],
+        'number': number, 'smlouva_datum': smlouva_datum, 'pdf_bytes': pdf_bytes,
+        'doc_order': doc_order, 'lines': lines, 'partner': partner, 'patch': patch, 'calc': c,
+        'termin_zalohy_2': f.get('termin_zalohy_2') or '', 'form': form_snapshot,
+    }
+
+    import html as _html
+    from pypdf import PdfReader as _PdfReader
+    key = f['key']
+    # pages as images, like the contract preview (iOS Safari shows only the first page of an embedded PDF)
+    pages_html = ''.join(
+        f'<img src="/order-form/preview-page/{token}/{i}?key={key}" alt="Strana {i + 1}" loading="lazy">'
+        for i in range(len(_PdfReader(io.BytesIO(pdf_bytes)).pages)))
+    t_banner =('<div style="background:#c00;color:#fff;font-size:12px;font-weight:bold;text-align:center;'
+                'padding:4px 8px;border-radius:4px;margin-bottom:12px;">TEST REŽIM</div>') if f['test'] else ''
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Náhled dodatku &mdash; {_html.escape(order['name'])}</title>
+<style>
+*,*::before,*::after{{box-sizing:border-box}}
+body{{font-family:Arial,sans-serif;background:#f5f5f5;color:#333;margin:0;padding:20px}}
+.card{{background:#fff;border-radius:8px;padding:24px;max-width:880px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+h2{{margin:0 0 4px;font-size:20px}}
+.sub{{color:#888;font-size:13px;margin-bottom:8px}}
+.info{{font-size:13px;color:#555;margin:0 0 16px;padding:10px 14px;background:#fffbf0;border:1px solid #f0e0a0;border-radius:6px}}
+.pages img{{width:100%;border:1px solid #ddd;border-radius:4px;display:block;margin-top:12px;background:#fff}}
+.pdf-link{{display:inline-block;font-size:13px;color:#8a6d1a}}
+.actions{{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;align-items:center}}
+.btn-back{{padding:12px 24px;font-size:15px;border:2px solid #999;border-radius:6px;background:#fff;color:#555;cursor:pointer;text-decoration:none;font-weight:500}}
+.btn-back:hover{{background:#f5f5f5}}
+.btn-ok{{padding:12px 28px;font-size:15px;background:#c8a840;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold}}
+.btn-ok:hover{{background:#b5942e}}
+</style></head>
+<body><div class="card">
+  {t_banner}
+  <h2>Náhled dodatku</h2>
+  <div class="sub">{_html.escape(partner.get('name', ''))} &middot; dodatek {number} ke smlouvě {_html.escape(order['name'])}</div>
+  <div class="info">Zkontrolujte vygenerovaný dodatek. Pokud je vše v pořádku, klikněte na
+    <strong>Potvrdit a odeslat k podpisu</strong> &mdash; teprve poté bude dodatek odeslán klientovi.
+    Objednávka v Odoo se nemění.</div>
+  <a class="pdf-link" href="/order-form/preview-pdf/{token}?key={key}" target="_blank">Otevřít PDF</a>
+  <div class="pages">{pages_html}</div>
+  <div class="actions">
+    <a href="/dodatek-form?order_id={f['order_id']}&key={key}&test={f['test']}&draft={token}" class="btn-back">&#8592; Zpět na formulář</a>
+    <form method="post" action="/dodatek-form/confirm" style="margin:0">
+      <input type="hidden" name="key" value="{key}">
+      <input type="hidden" name="token" value="{token}">
+      <button type="submit" class="btn-ok">&#10003; Potvrdit a odeslat k podpisu</button>
+    </form>
+  </div>
+</div></body></html>"""
+
+
+@app.post('/dodatek-form/confirm', response_class=HTMLResponse)
+def dodatek_form_confirm(token: str = Form(...), key: str = Form(...)):
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+    draft = _drafts.pop(token, None)
+    if not draft or draft.get('kind') != 'dodatek':
+        raise HTTPException(status_code=400,
+                            detail='Relace vypršela nebo nebyla nalezena. Vraťte se na formulář a odešlete znovu.')
+    import traceback as _tb
+    try:
+        return _dodatek_confirm(draft)
+    except Exception:
+        logging.error('dodatek_form_confirm error:\n' + _tb.format_exc())
+        return _error_html('Chyba při potvrzování dodatku', _tb.format_exc())
+
+
+def _dodatek_confirm(draft):
+    import datetime as _dt, html as _html, uuid as _uuid
+    call = _odoo_call()
+    order, partner, test = draft['order'], draft['partner'], draft['test']
+    c, lines, doc_order = draft['calc'], draft['lines'], draft['doc_order']
+
+    number = _dodatek_number_take(call)
+    pdf_bytes = draft['pdf_bytes']
+    if number != draft['number']:  # someone else confirmed a dodatek in the meantime
+        pdf_bytes = generate_dodatek(doc_order, partner, lines, number, order['name'], draft['smlouva_datum'])
+
+    if draft['patch']:
+        call('res.partner', 'write', [[order['partner_id'][0]], draft['patch']])
+    client = partner.get('name', '')
+    doc_prefix = f'{client} - {number}' if client else number
+    att_id = call('ir.attachment', 'create', [{
+        'name': f'Dodatek_{doc_prefix}.pdf', 'res_model': 'sale.order', 'res_id': order['id'], 'type': 'binary',
+        'datas': base64.b64encode(pdf_bytes).decode(), 'mimetype': 'application/pdf'}])
+
+    crm = _crm_info(call, order)
+    req_id, sign_url, sign_error = None, None, ''
+    try:
+        req_id, sign_url = _create_sign_request(
+            call, pdf_bytes, number, order['partner_id'][0], partner.get('email', ''),
+            company_partner_id=_SIGN_TEST_PARTNER_ID if test else _SIGN_COMPANY_PARTNER_ID,
+            company_email=_SIGN_TEST_EMAIL if test else _SIGN_COMPANY_EMAIL,
+            salesperson_partner_id=crm['salesperson_partner_id'], client_name=client,
+            crm_opportunity=crm['opportunity'], crm_tipar=crm['tipar'], crm_obchodnik=crm['obchodnik'],
+            tipar_partner_id=crm['tipar_partner_id'],
+            subject=f'LUNASTAV - dodatek {number} ke SOD {order["name"]}' + (f' pro {client}' if client else ''),
+            extra_vals={'x_cz_dodatek_cislo': number, 'x_cz_smlouva_cislo': order['name']},
+        )
+        call('sale.order', 'message_post', [[order['id']]], {
+            'body': (f'Dodatek {number} odeslán k podpisu. Čeká na podpis: {client} (Objednatel), '
+                     'Lukáš Najman, LUNASTAV CZ s.r.o. (Zhotovitel).'),
+            'message_type': 'comment', 'subtype_xmlid': 'mail.mt_note'})
+    except Exception as exc:
+        logging.error('dodatek sign request failed:\n' + __import__('traceback').format_exc())
+        sign_error = str(exc)
+
+    summary = price_summary(doc_order, lines)
+    try:
+        call('x_cz_dodatek', 'create', [{
+            'x_name': number, 'x_order_id': order['id'], 'x_partner_id': order['partner_id'][0],
+            'x_lead_id': crm['lead_id'] or False, 'x_stav': 'odeslano' if req_id else 'chyba', 'x_test': bool(test),
+            'x_datum_odeslani': _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+            'x_smlouva_cislo': order['name'], 'x_smlouva_datum': draft['smlouva_datum'], 'x_klient_jmeno': client,
+            'x_currency_id': _CZK_ID,
+            'x_cena_pred_slevou': summary['price_without_discount'], 'x_sleva_pct': summary['discount_pct'],
+            'x_sleva': summary['discount'], 'x_cena_bez_dph': doc_order['amount_untaxed'],
+            'x_dph': doc_order['amount_tax'], 'x_cena_s_dph': doc_order['amount_total'],
+            'x_dotace': doc_order['x_studio_vyse_dotace_kc'], 'x_konecna_cena': doc_order['x_studio_cena_po_odecteni_dotace'],
+            'x_zaloha': c['zaloha'], 'x_doplatek': c['doplatek'], 'x_zaloha_pct': c['split_pct'][0],
+            'x_termin_zalohy': draft['termin_zalohy_2'],
+            'x_sign_request_id': req_id or False, 'x_pdf_id': att_id,
+            'x_line_ids': [(0, 0, {
+                'x_name': re.sub(r'^\[.+?\]\s*', '', ln['name']), 'x_sequence': i, 'x_kod': ln['code'],
+                'x_mnozstvi': ln['product_uom_qty'], 'x_jednotka': ln['product_uom_id'][1],
+                'x_currency_id': _CZK_ID, 'x_jednotkova_cena': ln['price_unit'], 'x_sleva_pct': ln['discount'],
+                'x_celkem': ln['price_subtotal'],
+            }) for i, ln in enumerate(lines)],
+        }])
+    except Exception:
+        logging.error('x_cz_dodatek record not saved:\n' + __import__('traceback').format_exc())
+
+    try:
+        _append_log_entry({
+            'log_id': _uuid.uuid4().hex, 'kind': 'dodatek', 'dodatek_cislo': number,
+            'order_id': order['id'], 'order_name': order['name'], 'partner_name': client,
+            'opportunity_name': crm['opportunity'], 'salesperson': crm['obchodnik'],
+            'created_at': _dt.datetime.now().isoformat(timespec='seconds'), 'form': draft['form'],
+        })
+    except Exception as exc:
+        logging.error(f'Log append failed: {exc}')
+
+    note = (f'<p style="color:#c55;font-size:13px;margin:8px 0 0;">Chyba při odesílání k podpisu: '
+            f'{_html.escape(sign_error)}</p>') if sign_error else ''
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Dodatek vytvořen</title></head>
+<body style="font-family:Arial,sans-serif;text-align:center;padding:60px;color:#333;background:#f9f9f9;">
+  <div style="background:#fff;border-radius:8px;padding:40px;max-width:520px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.1);">
+    <div style="font-size:56px;margin-bottom:12px;">&#10003;</div>
+    <h2 style="margin:0 0 8px;">Dodatek vytvořen</h2>
+    <p style="color:#555;font-size:14px;margin:0;">{number} ke smlouvě {_html.escape(order['name'])}</p>
+    {note}
+    {_sign_link_html(sign_url)}
+    <p style="margin-top:24px;"><a href="{ODOO_URL}/odoo/sales/{order['id']}" style="color:#aaa;font-size:13px;">Zpět do Odoo</a></p>
+  </div>
+</body></html>"""
 
 
 # @app.get('/verify/{sign_id}/{partner_id}/{token}', response_class=HTMLResponse)

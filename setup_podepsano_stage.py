@@ -1,6 +1,6 @@
 """
-Update automation 58 (LUNASTAV: Dilci podpis) to flip CRM to Podepsáno
-when the client (Objednatel) signs, unless already in Vyhráno or Žádost o dotaci schválená.
+Update automation 58 (LUNASTAV: Dilci podpis) to move CRM to Vyhráno (Won, id=4)
+when the client (Objednatel) signs.
 
     python setup_podepsano_stage.py          # dry run — print new code
     python setup_podepsano_stage.py --apply  # write to Odoo
@@ -18,18 +18,16 @@ SERVER_ACTION_ID = 1371  # LUNASTAV: Dilci podpis - code
 
 NEW_CODE = """\
 req = record.sign_request_id
-if req.reference.startswith('P2'):
+if req.reference.startswith(('P2', 'OP-')):
     order = env['sale.order'].search([('name', '=', req.reference)], limit=1)
     if order:
         lead = order.opportunity_id or None
 
-        # Flip CRM to Podepsano when the client (Objednatel) signs —
-        # but skip if already in a later protected stage.
-        PODEPSANO_ID     = 6
-        PROTECTED_STAGES = {4, 7}  # Vyhrano (Won), Zadost o dotaci schvalena
+        # Move CRM to Vyhrano (Won) when the client (Objednatel) signs.
+        VYHRANO_ID = 4
         if record.role_id and record.role_id.name == 'Objednatel':
-            if lead and lead.stage_id.id not in PROTECTED_STAGES:
-                lead.sudo().write({'stage_id': PODEPSANO_ID})
+            if lead and lead.stage_id.id != VYHRANO_ID:
+                lead.sudo().write({'stage_id': VYHRANO_ID})
 
         # Chatter note posted to both the sale order and the CRM entry
         if order.state == 'sent':

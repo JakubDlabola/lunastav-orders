@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-10-05] — Dodatek ke smlouvě o dílo
+- Nové tlačítko na objednávce „Otevřít formulář pro generaci dodatku" (objednávky ve stavu Odesláno / Prodejní objednávka, tj. se smlouvou)
+- Formulář dodatku = objednávkový formulář bez Popisu díla, Adresy realizace, Termínu dokončení a Stavební připravenosti; navíc pole „Datum uzavření původní smlouvy" (předvyplněno z dokončeného podpisu smlouvy)
+- Předvyplnění: poslední uložený stav formuláře dané objednávky (`orders_log.jsonl`), jinak rekonstrukce z řádků objednávky (produkty, množství, tloušťky, vlastní položky, záloha/doplatek, dotace)
+- Objednávka v Odoo se nemění: řádky a částky dodatku se počítají v aplikaci stejně jako Odoo (daně dle produktu, zaokrouhlení po skupinách daní) a ukládají se do záznamu `x_cz_dodatek` (+ `x_cz_dodatek_line`)
+- PDF ze šablony `Dodatek-LUNASTAV-vzor.docx` (`contract.generate_dodatek`); doplněn řádek „V {obec} dne {datum}" a skrytá kotva pro podpisové pole
+- Číslování `DCZ` + rok + 4 číslice (ir.sequence `lunastav.cz.dodatek`, roční řada): 2026 od DCZ260200, každý další rok od 0001; číslo se spotřebuje až po potvrzení
+- Podpis přes Odoo Sign jako u smlouvy (reference = číslo dodatku, `sign.request.x_cz_dodatek_cislo` / `x_cz_smlouva_cislo`); e-maily: rozšiřující pohledy na šablonách 1289/1291 (text pro dodatek), smlouvy i SK dodatky beze změny
+- Automatizace: „LUNASTAV CZ: Dodatek podepsán" (podepsané PDF + certifikát na objednávku, kontakt a příležitost, stav Podepsáno), „Certifikát dodatku", „Dodatek zrušen"; smluvní automatizace (P2…/OP-…) dodatky ignorují
+- Náhled dodatku jako obrázky stran (stejně jako u smlouvy, kvůli iOS) + odkaz „Otevřít PDF"
+- Záložka „Dodatky" na objednávce, menu Prodej > Objednávky > Dodatky; setup skript `setup_dodatek.py`
+
+## [2026-10-05] — Podpisová pole na smlouvě
+- Podpisová pole se umisťují podle skryté kotvy (◆) v podpisovém rámečku, ať skončí na kterékoli stránce — dříve se předpokládala poslední strana a při přetečení (P261977) skončila pole na prázdné stránce
+- Podpisový blok (řádek „V … dne …" + tabulka Jméno/podpis/Objednatel–Zhotovitel) se už nerozdělí mezi dvě stránky
+- Řádek „V {obec} dne {datum}": místo 7 tabulátorů jeden tabulátor na pevnou pozici — dlouhý název obce už nezalomí datum
+
 ## [2026-09-28] — Oprava náhledu smlouvy (výpadek po zobrazení)
 - Strany náhledu se vykreslují postupně jedna po druhé a ukládají se k náhledu — knihovna pro vykreslování PDF nesnese souběžné volání; prohlížeč si vyžádal všechny strany najednou, služba spadla a náhled pak hlásil „Preview not found or expired"
 
@@ -7,6 +24,13 @@
 - Náhled PDF před potvrzením se zobrazuje jako obrázky jednotlivých stran místo vloženého PDF — Safari na iOS ve vloženém PDF ukázal jen první stranu a nešlo listovat dál
 - Nad stranami odkaz „Otevřít PDF" pro zobrazení původního PDF v nové záložce
 - Nový endpoint `GET /order-form/preview-page/{token}/{page}` (PNG strany, stejná platnost jako náhled)
+
+## [2026-09-25] — Doprava podle křestního jména, oprava dotace u dveří
+- Doprava a manipulace: místo náhodné částky 200–300 Kč vzorec 100 + 21 × délka křestního jména klienta (Jan = 163 Kč, Magdaléna = 289 Kč); náhled ve formuláři se přepočítá při změně jména
+- Oprava: u dveří se dotace odečítala dvakrát („Konečná cena po odečtení dotace" vycházela příliš nízko) — dveře se nyní vracejí na plnou ceníkovou cenu stejně jako okna
+
+## [2026-09-24] — Tlačítko v e-mailu k podpisu
+- Tlačítko „Podepsat smlouvu" přejmenováno na „ZOBRAZIT DOKUMENT", větší písmo (18 px, bez zalamování na mobilu)
 
 ## [2026-09-17] — Opravy načítání šablony
 
