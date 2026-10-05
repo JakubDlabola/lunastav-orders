@@ -1,0 +1,104 @@
+    <style>
+      .okna-tiles { display: grid; gap: 6px; }
+      .okna-tiles-types { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+      .okna-tiles-surfaces { grid-template-columns: repeat(3, 1fr); }
+      .okna-tile { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border: 2px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; color: #333; font-family: inherit; }
+      .okna-tile:hover { border-color: #c8a840; }
+      .okna-tile.on { border-color: #3aaa6e; background: #f0faf4; }
+      .okna-tile b { font-size: 11px; margin-top: 2px; }
+      .okna-tile small { font-size: 10px; color: #777; }
+      .okna-swatch { width: 24px; height: 24px; border: 1px solid #ccc; border-radius: 4px; }
+      .okna-small { font-size: 12px; color: #888; display: block; }
+      .okna-small input, .okna-small select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-top: 2px; background: #fff; }
+      .okna-price { display: inline-block; margin-top: 12px; padding: 6px 12px; border-radius: 6px; background: #1f2d24; color: #8fe0a9; font-size: 13px; }
+      .okna-price.warn { background: #c62828; color: #fff; }
+      .okna-price small { opacity: .8; }
+      .okna-acc { border: 2px solid #ddd; border-radius: 6px; margin-top: 6px; background: #fff; }
+      .okna-acc.on { border-color: #3aaa6e; }
+      .okna-acc-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 14px; font-weight: bold; cursor: pointer; }
+      .okna-acc-head small { font-weight: normal; color: #888; }
+      .okna-acc-head b { margin-left: auto; color: #2a7a3e; font-size: 13px; }
+      .okna-acc-body { display: none; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 10px 10px; }
+      .okna-acc.on .okna-acc-body { display: grid; }
+      .okna-error { margin-top: 10px; padding: 8px 12px; border: 1px solid #f0b0b0; background: #fff3f3; color: #a00; border-radius: 6px; font-size: 13px; }
+      .okna-btn-main { flex: 1; padding: 10px; border: none; border-radius: 6px; background: #2b3a31; color: #fff; font-weight: bold; cursor: pointer; font-size: 14px; }
+      .okna-btn-light { padding: 10px 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+      .okna-note { font-size: 12px; color: #777; margin-bottom: 6px; }
+      .okna-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; background: #fff; border: 1px solid #e3e3e3; margin-bottom: 6px; }
+      .okna-item.editing { border-color: #3aaa6e; background: #f0faf4; }
+      .okna-item-main { flex: 1; text-align: left; background: none; border: none; cursor: pointer; padding: 0; font-family: inherit; color: #333; }
+      .okna-item-main b { display: block; font-size: 14px; }
+      .okna-item-main small { color: #777; font-size: 12px; }
+      .okna-item-price { font-weight: bold; color: #2a7a3e; white-space: nowrap; font-size: 14px; }
+      .okna-item-del { width: 28px; height: 28px; border: 1px solid #ddd; border-radius: 6px; background: #fff8f8; color: #c00; cursor: pointer; font-size: 16px; }
+      .okna-work { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border: 1px solid #e3e3e3; border-radius: 6px; margin-bottom: 4px; background: #fff; font-size: 13px; }
+      .okna-work.on { border-color: #3aaa6e; }
+      .okna-work label { flex: 1; min-width: 200px; cursor: pointer; }
+      .okna-work-qty { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #888; }
+      .okna-work-qty input { width: 70px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; }
+      .okna-work-qty button { border: none; background: none; color: #2a7a3e; cursor: pointer; font-size: 12px; text-decoration: underline; }
+      .okna-work-qty b { min-width: 80px; text-align: right; color: #333; }
+      .okna-more { display: flex; justify-content: space-between; width: 100%; margin-top: 8px; padding: 8px 10px; border: none; border-radius: 6px; background: #eef1ee; cursor: pointer; font-weight: bold; font-family: inherit; }
+      .okna-more small { font-weight: normal; color: #888; }
+      .okna-dalsi-row { display: grid; grid-template-columns: 1fr 70px 40px; gap: 6px; align-items: center; font-size: 13px; padding: 3px 0; }
+      .okna-dalsi-row small { color: #888; }
+      .okna-dalsi-row input { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+    <div id="windows-section" class="hidden type-section">
+      <span class="field-label" style="margin-top:4px;">Typ výplně</span>
+      <div class="okna-tiles okna-tiles-types" id="okna-types"></div>
+      <span class="field-label">Povrch</span>
+      <div class="okna-tiles okna-tiles-surfaces" id="okna-surfaces"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 90px;gap:8px;margin-top:14px;">
+        <label class="okna-small">Šířka [mm]<input type="number" id="okna_sirka" min="1" step="1" value="1200" oninput="oknaEditorChanged()"></label>
+        <label class="okna-small">Výška [mm]<input type="number" id="okna_vyska" min="1" step="1" value="1500" oninput="oknaEditorChanged()"></label>
+        <label class="okna-small">Počet ks<input type="number" id="okna_ks" min="1" step="1" value="1" oninput="oknaEditorChanged()"></label>
+      </div>
+      <span class="field-label">Sklo <span style="font-weight:normal;color:#888;">(informativní)</span></span>
+      <div class="options">
+        <label class="opt-wrap"><input type="radio" name="okna_sklo" value="trojsklo" checked><span class="opt-btn">Trojsklo</span></label>
+        <label class="opt-wrap"><input type="radio" name="okna_sklo" value="dvojsklo"><span class="opt-btn">Dvojsklo</span></label>
+      </div>
+      <div id="okna-price" class="okna-price"></div>
+
+      <span class="field-label">Příslušenství <span style="font-weight:normal;color:#888;">(volitelné)</span></span>
+      <div class="okna-acc" id="okna-acc-parapet">
+        <label class="okna-acc-head"><input type="checkbox" id="okna_parapet_on" onchange="oknaEditorChanged()"> Parapet vnitřní <small>PVC</small> <b id="okna-parapet-price"></b></label>
+        <div class="okna-acc-body" style="grid-template-columns:1fr 1fr 1fr;">
+          <label class="okna-small">Hloubka<select id="okna_parapet_hloubka" onchange="oknaEditorChanged()"></select></label>
+          <label class="okna-small">Skupina<select id="okna_parapet_skupina" onchange="oknaEditorChanged()"><option value="1">1 (bílá)</option><option value="2">2 (dekor)</option></select></label>
+          <label class="okna-small">Délka [m]<input type="number" id="okna_parapet_delka" min="0" max="50" step="0.1" placeholder="např. 1.3" oninput="oknaEditorChanged()"></label>
+        </div>
+      </div>
+      <div class="okna-acc" id="okna-acc-zaluzie">
+        <label class="okna-acc-head"><input type="checkbox" id="okna_zaluzie_on" onchange="oknaEditorChanged()"> Žaluzie <small>interiér</small> <b id="okna-zaluzie-price"></b></label>
+        <div class="okna-acc-body">
+          <label class="okna-small">Šířka [mm]<input type="number" id="okna_zaluzie_sirka" min="1" step="1" oninput="oknaEditorChanged()"></label>
+          <label class="okna-small">Výška [mm]<input type="number" id="okna_zaluzie_vyska" min="1" step="1" oninput="oknaEditorChanged()"></label>
+        </div>
+      </div>
+      <div class="okna-acc" id="okna-acc-sit">
+        <label class="okna-acc-head"><input type="checkbox" id="okna_sit_on" onchange="oknaEditorChanged()"> Síť proti hmyzu <b id="okna-sit-price"></b></label>
+        <div class="okna-acc-body">
+          <label class="okna-small">Šířka [mm]<input type="number" id="okna_sit_sirka" min="1" step="1" oninput="oknaEditorChanged()"></label>
+          <label class="okna-small">Výška [mm]<input type="number" id="okna_sit_vyska" min="1" step="1" oninput="oknaEditorChanged()"></label>
+        </div>
+      </div>
+      <div id="okna-error" class="okna-error hidden"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button type="button" id="okna-add-btn" class="okna-btn-main" onclick="oknaAddItem()">+ Přidat položku</button>
+        <button type="button" id="okna-cancel-btn" class="okna-btn-light hidden" onclick="oknaResetEditor()">Zrušit úpravu</button>
+      </div>
+
+      <span class="field-label">Položky</span>
+      <div id="okna-items"></div>
+
+      <span class="field-label">Základní služby</span>
+      <div class="okna-note">Běžné metry se počítají z obvodu zadaných výplní — aktuálně <b id="okna-obvod">0</b> bm.</div>
+      <div id="okna-basic"></div>
+      <button type="button" class="okna-more" onclick="oknaToggleDalsi()"><span>Další služby <small>(běžně se nepoužívají)</small></span><span id="okna-dalsi-sign">+</span></button>
+      <div id="okna-dalsi" class="hidden">
+        <input type="text" id="okna-dalsi-search" placeholder="Hledat službu…" oninput="oknaRenderDalsi()" style="margin:8px 0;">
+        <div id="okna-dalsi-list" style="max-height:260px;overflow:auto;"></div>
+      </div>
+    </div>

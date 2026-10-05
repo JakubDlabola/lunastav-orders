@@ -6,8 +6,8 @@ Dodatek ke smlouvě o dílo (CZ) — Odoo side of the /dodatek-form flow in app.
      (2026 starts at 0200, every later year at 0001 — Odoo creates the yearly range itself)
   3. models x_cz_dodatek / x_cz_dodatek_line + sale.order.x_cz_dodatek_ids, access rights, views,
      menu Prodej > Objednávky > Dodatky
-  4. sale.order form: button "Otevřít formulář pro generaci dodatku" (orders with a contract sent or
-     signed) and a "Dodatky" tab
+  4. sale.order form: button "Dodatkový formulář" (orders with a contract sent or signed; the order
+     form button 1338 from Studio view 4597 is relabelled "Objednávkový formulář") and a "Dodatky" tab
   5. sign e-mails: extension views on the CZ templates 1289/1291 — a dodatek row is shown instead of the
      contract text when the request is a dodatek; contracts and SK dodatky render exactly as before
   6. automations: signed dodatek → signed PDF + certificate on the order, client and opportunity, status
@@ -326,8 +326,11 @@ button_action = ensure_record('ir.actions.server', [('name', '=', 'Otevřít for
 
 if model_id(D) and button_action:
     ORDER_FORM = f"""<data>
+  <xpath expr="//button[@name='1338']" position="attributes">
+    <attribute name="string">Objednávkový formulář</attribute>
+  </xpath>
   <xpath expr="//button[@name='1338']" position="after">
-    <button string="Otevřít formulář pro generaci dodatku" type="action" name="{button_action}"
+    <button string="Dodatkový formulář" type="action" name="{button_action}"
             invisible="state not in ('sent', 'sale')"/>
   </xpath>
   <xpath expr="//notebook" position="inside">

@@ -9,6 +9,8 @@ from docx import Document
 from docx.oxml.ns import qn
 from lxml import etree
 
+from okna import ALL_CODES as OKNA_CODES
+
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Smlouva-LUNASTAV-vzor.docx')
 DODATEK_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'Dodatek-LUNASTAV-vzor.docx')
 
@@ -426,7 +428,7 @@ def price_summary(order: dict, lines: list) -> dict:
         '3000B': 751,  '3100B': 751,  '3200B': 751,
         '3000C': 2002, '3100C': 2002, '3200C': 2002,  # šikminy: same listed price as the roof
     }
-    WIN_CODES = {'4000A', '4000B', '4000C', '4001A', '4001B'}
+    WIN_CODES = {'4000A', '4000B', '4000C', '4001A', '4001B'} | OKNA_CODES
     insul_codes = set(LISTED_PRICES)
     has_windows = False
     insul_area = 0.0

@@ -1,5 +1,15 @@
 # Changelog
 
+## [2026-10-06] — Kalkulačka oken a dveří (ceník Úsporami 2026)
+- Sekce „Okna" a „Dveře" nahrazeny jednou sekcí **„Okna a dveře"** — kalkulačka převzatá z portálu Úsporami (Okna napřímo): typ výplně (okno 1/2/3-křídlé, balkónové dveře 1/2-křídlé, vchodové dveře 1/2-křídlé), povrch (bílá / dekor 1-stranný / dekor 2-stranný), šířka × výška, počet ks, sklo (informativní), příslušenství na položku (parapet vnitřní PVC, žaluzie, síť), seznam položek s úpravou/odebráním
+- Ceny z ceníku 2026 (`okna_cenik_2026.json`, bez DPH): rozměr se zaokrouhluje nahoru na nejbližší bod ceníku, mimo rozsah ceníku položku nelze přidat
+- Základní služby za běžný metr (montáž, demontáž PVC, likvidace, zednické zapravení) — bm se počítají z obvodu výplní, lze přepsat; „Další služby" (33 položek ceníku) v rozbalovacím panelu
+- Odoo produkty v kategorii Okna s DPH 12 % G: 4010A–C okna, 4011A–B balkónové dveře, 4012A–B vchodové dveře, 4020 parapet, 4021 žaluzie, 4022 síť, 4030–4033 základní služby, 4039 další služby (`setup_okna_products.py`); každá položka/služba je samostatný řádek s popisem (typ, povrch, rozměr, sklo)
+- Server ceny vždy přepočítá z ceníku (`okna.py`), ceny z prohlížeče nepoužívá; kosmetická sleva 3 % na všech řádcích; součet oken počítán stejně jako Odoo (zaokrouhlení po řádcích), takže náhled, záloha/doplatek i smlouva sedí na korunu
+- Dotace 8 000 Kč/m² z plochy výplní (šířka × výška × ks), okna i dveře; u zakázky jen s okny/dveřmi platí 80 / 20
+- Původní ceny (okna 9 000 / 9 900 / 10 800 Kč/m², žaluzie a sítě 1 000 Kč/m², dveře 4100 23 277,77 Kč/m²) uloženy v `docs/Puvodni ceny oken a dveri.md`; staré produkty zůstávají kvůli starším objednávkám
+- Uložené formuláře starších objednávek (okna v m²) se při načtení šablony / dodatku přenesou bez oken — okna je třeba zadat znovu v kalkulačce
+
 ## [2026-10-05] — Dodatek ke smlouvě o dílo
 - Nové tlačítko na objednávce „Otevřít formulář pro generaci dodatku" (objednávky ve stavu Odesláno / Prodejní objednávka, tj. se smlouvou)
 - Formulář dodatku = objednávkový formulář bez Popisu díla, Adresy realizace, Termínu dokončení a Stavební připravenosti; navíc pole „Datum uzavření původní smlouvy" (předvyplněno z dokončeného podpisu smlouvy)

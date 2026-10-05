@@ -16,6 +16,7 @@ import zipfile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from contract import generate_contract, generate_dodatek, price_summary
+import okna
 
 load_dotenv()
 
@@ -26,6 +27,13 @@ ODOO_API_KEY = os.environ['ODOO_API_KEY']
 SERVICE_KEY  = os.environ['SERVICE_KEY']
 
 app = FastAPI(title='LUNASTAV Order Service')
+
+# Windows & doors calculator: form section, its script and the price list, inlined into the order form
+_HERE = os.path.dirname(os.path.abspath(__file__))
+OKNA_HTML = open(os.path.join(_HERE, 'okna_form.html'), encoding='utf-8').read()
+OKNA_JS = open(os.path.join(_HERE, 'okna_form.js'), encoding='utf-8').read()
+OKNA_CENIK_JSON = __import__('json').dumps(okna.CENIK, ensure_ascii=True, separators=(',', ':'))
+OKNA_UOM_IDS = {'Ks': 1, 'm': 9, 'm²': 11, 'km': 10}
 
 _drafts: dict = {}  # token -> draft data for preview/confirm flow
 
@@ -363,7 +371,6 @@ def _form_page(ctx):
     #roof-section    {{ border-left-color: #c8673a; background: rgba(200, 103, 58, 0.06); }}
     #ceiling-section {{ border-left-color: #3a7fc8; background: rgba(58, 127, 200, 0.06); }}
     #sikminy-section {{ border-left-color: #0ea5e9; background: rgba(14, 165, 233, 0.06); }}
-    #doors-section   {{ border-left-color: #7c3aed; background: rgba(124, 58, 237, 0.06); }}
     #windows-section {{ border-left-color: #3aaa6e; background: rgba(58, 170, 110, 0.06); }}
     input[type=number] {{ width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; margin-top: 2px; }}
     .preview {{ background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 16px 20px; margin-top: 20px; font-size: 14px; }}
@@ -409,14 +416,12 @@ def _form_page(ctx):
     <input type="hidden" name="test" value="{test}">
     <input type="hidden" name="eligible_roof"        id="inp_elig_roof"    value="0">
     <input type="hidden" name="eligible_ceiling"     id="inp_elig_ceiling" value="0">
-    <input type="hidden" name="eligible_win_a"       id="inp_elig_win_a"   value="0">
-    <input type="hidden" name="eligible_win_b"       id="inp_elig_win_b"   value="0">
-    <input type="hidden" name="eligible_win_c"       id="inp_elig_win_c"   value="0">
     <input type="hidden" name="discount_pct_roof"    id="inp_disc_roof"    value="0">
     <input type="hidden" name="discount_pct_ceiling" id="inp_disc_ceiling" value="0">
     <input type="hidden" name="grant_amount"         id="inp_grant_amount" value="0">
     <input type="hidden" name="eligible_sikminy"    id="inp_elig_sikminy" value="0">
-    <input type="hidden" name="eligible_doors"      id="inp_elig_doors"   value="0">
+    <input type="hidden" name="okna_items" id="inp_okna_items" value="[]">
+    <input type="hidden" name="okna_prace" id="inp_okna_prace" value="">
     <input type="hidden" name="custom_items" id="inp_custom_items" value="[]">
     <input type="hidden" name="grant_enabled_val" id="inp_grant_enabled_val" value="1">
     <input type="hidden" name="remaining_grant_k_val" id="inp_remaining_grant_k_val" value="">
@@ -482,8 +487,7 @@ def _form_page(ctx):
       <label class="opt-wrap"><input type="checkbox" name="has_roof"    id="chk_roof"    onchange="onTypesChange()"><span class="opt-btn">Střecha</span></label>
       <label class="opt-wrap"><input type="checkbox" name="has_ceiling" id="chk_ceiling" onchange="onTypesChange()"><span class="opt-btn">Strop</span></label>
       <label class="opt-wrap"><input type="checkbox" name="has_sikminy" id="chk_sikminy" onchange="onTypesChange()"><span class="opt-btn">Šikminy</span></label>
-      <label class="opt-wrap"><input type="checkbox" name="has_doors"   id="chk_doors"   onchange="onTypesChange()"><span class="opt-btn">Dveře</span></label>
-      <label class="opt-wrap"><input type="checkbox" name="has_windows" id="chk_windows" onchange="onTypesChange()"><span class="opt-btn">Okna</span></label>
+      <label class="opt-wrap"><input type="checkbox" name="has_windows" id="chk_windows" onchange="onTypesChange()"><span class="opt-btn">Okna a dveře</span></label>
     </div>
 
     <div id="roof-section" class="hidden type-section">
@@ -535,41 +539,7 @@ def _form_page(ctx):
       <input type="number" name="qty_m2_sikminy" id="qty_m2_sikminy" min="1" step="1" placeholder="" oninput="calc(); updatePopisDila()">
     </div>
 
-    <div id="doors-section" class="hidden type-section">
-      <span class="field-label">Plocha dveří (m²)</span>
-      <input type="number" name="qty_m2_doors" id="qty_m2_doors" min="0.1" step="0.1" value="1.8" oninput="calc()">
-    </div>
-
-    <div id="windows-section" class="hidden type-section">
-      <span class="field-label">Okno, nebarvené — 9 000 Kč / m²</span>
-      <input type="number" name="qty_win_a" id="qty_win_a" min="0" step="0.1" placeholder="0 m²" oninput="onWinQtyChange()">
-      <span class="field-label">Okno, jednostranná barva — 9 900 Kč / m²</span>
-      <input type="number" name="qty_win_b" id="qty_win_b" min="0" step="0.1" placeholder="0 m²" oninput="onWinQtyChange()">
-      <span class="field-label">Okno, oboustranná barva — 10 800 Kč / m²</span>
-      <input type="number" name="qty_win_c" id="qty_win_c" min="0" step="0.1" placeholder="0 m²" oninput="onWinQtyChange()">
-      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
-        <input type="checkbox" name="has_blinds" id="chk_blinds" value="1"
-               onchange="onBlindsNetsChange('blinds')"
-               style="width:18px;height:18px;cursor:pointer;accent-color:#3aaa6e;">
-        <label for="chk_blinds" style="font-size:14px;cursor:pointer;">Žaluzie — 1 000 Kč / m²</label>
-      </div>
-      <div id="blinds-qty-section" class="hidden" style="margin-top:6px;">
-        <span class="field-label">Žaluzie (m²)</span>
-        <input type="number" name="qty_blinds" id="qty_blinds" min="0" step="0.1" placeholder="0 m²"
-               oninput="document.getElementById('qty_blinds').dataset.userSet='1'; calc()">
-      </div>
-      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
-        <input type="checkbox" name="has_nets" id="chk_nets" value="1"
-               onchange="onBlindsNetsChange('nets')"
-               style="width:18px;height:18px;cursor:pointer;accent-color:#3aaa6e;">
-        <label for="chk_nets" style="font-size:14px;cursor:pointer;">Síť proti hmyzu — 1 000 Kč / m²</label>
-      </div>
-      <div id="nets-qty-section" class="hidden" style="margin-top:6px;">
-        <span class="field-label">Síť proti hmyzu (m²)</span>
-        <input type="number" name="qty_nets" id="qty_nets" min="0" step="0.1" placeholder="0 m²"
-               oninput="document.getElementById('qty_nets').dataset.userSet='1'; calc()">
-      </div>
-    </div>
+{OKNA_HTML}
 
     <span class="field-label" style="margin-top:20px;">Vlastní položky</span>
     <div id="custom-items-list" style="margin-bottom:8px;"></div>
@@ -583,11 +553,10 @@ def _form_page(ctx):
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
-      <div class="preview-row sub hidden" id="pv-windows-row"><span>z toho okna celkem</span><span id="pv-windows">—</span></div>
+      <div class="preview-row sub hidden" id="pv-windows-row"><span>z toho okna a dveře celkem</span><span id="pv-windows">—</span></div>
       <div class="preview-row hidden" id="pv-rate-roof-row"><span>Efektivní cena / m² — Střecha</span><span id="pv-rate-roof">—</span></div>
       <div class="preview-row hidden" id="pv-rate-ceil-row"><span>Efektivní cena / m² — Strop</span><span id="pv-rate-ceil">—</span></div>
       <div class="preview-row hidden" id="pv-rate-sikminy-row"><span>Efektivní cena / m² — Šikminy</span><span id="pv-rate-sikminy">—</span></div>
-      <div class="preview-row hidden" id="pv-doors-row"><span>Cena dveří / m²</span><span id="pv-doors">—</span></div>
       <div class="preview-row hidden" id="pv-disc-row"><span>Sleva</span><span id="pv-disc">—</span></div>
       <div class="preview-row grant hidden" id="pv-grant-row"><span>Náklady pokryté dotací</span><span id="pv-grant">—</span></div>
       <div class="preview-row hidden" id="pv-client-row"><span>Náklady k uhrazení</span><span id="pv-client">—</span></div>
@@ -662,7 +631,8 @@ def _form_page(ctx):
 const IS_DODATEK = {'true' if dodatek else 'false'};
 const GRANT_RATE = {{roof: 2000, ceiling: 750, windows: 8000}};
 const LISTED    = {{roof: 2002, ceiling: 751}};
-const WIN_RATES = {{a: 9000, b: 9900, c: 10800}};
+const OKNA_CENIK = {OKNA_CENIK_JSON};
+{OKNA_JS}
 
 const _manualFields = new Set();
 function toggleManual(fieldId, autoFn) {{
@@ -719,9 +689,12 @@ function updatePopisDila() {{
   const hasRoof    = document.getElementById('chk_roof').checked;
   const hasCeil    = document.getElementById('chk_ceiling').checked;
   const hasSikminy = document.getElementById('chk_sikminy').checked;
-  const hasDoors   = document.getElementById('chk_doors').checked;
-  const hasWin     = document.getElementById('chk_windows').checked;
-  if (!hasRoof && !hasCeil && !hasSikminy && !hasDoors && !hasWin) return;
+  const hasWinSec  = document.getElementById('chk_windows').checked;
+  let oknaT = null;
+  if (hasWinSec) {{ try {{ oknaT = oknaTotals(); }} catch (e) {{}} }}
+  const hasDoors   = !!(oknaT && oknaT.hasDoors);
+  const hasWin     = hasWinSec && !hasDoors || !!(oknaT && oknaT.hasWindows);
+  if (!hasRoof && !hasCeil && !hasSikminy && !hasWinSec) return;
 
   // Title line
   const titleParts = [];
@@ -729,8 +702,9 @@ function updatePopisDila() {{
   else if (hasRoof) titleParts.push('Zateplení střechy');
   else if (hasCeil) titleParts.push('Zateplení stropu');
   if (hasSikminy) titleParts.push('zateplení šikmin');
-  if (hasDoors) titleParts.push('výměna dveří');
-  if (hasWin) titleParts.push('výměna oken');
+  if (hasWin && hasDoors) titleParts.push('výměna oken a dveří');
+  else if (hasDoors) titleParts.push('výměna dveří');
+  else if (hasWin) titleParts.push('výměna oken');
   let title = titleParts[0] || '';
   if (titleParts.length > 1) title += ' a ' + titleParts.slice(1).join(' a ');
   title = title.charAt(0).toUpperCase() + title.slice(1);
@@ -777,11 +751,6 @@ function updatePopisDila() {{
     }}
   }}
 
-  if (hasDoors) {{
-    const qty = document.getElementById('qty_m2_doors').value || '';
-    if (qty) lines.push('Výměna dveří o výměře ' + qty + ' m².');
-  }}
-
   const body = lines.slice(1).join(' ');
   document.getElementById('popis_dila').value = lines[0] + (body ? '\\n' + body : '');
 }}
@@ -807,21 +776,19 @@ function onTypesChange() {{
   const hasRoof    = document.getElementById('chk_roof').checked;
   const hasCeil    = document.getElementById('chk_ceiling').checked;
   const hasSikminy = document.getElementById('chk_sikminy').checked;
-  const hasDoors   = document.getElementById('chk_doors').checked;
   const hasWin     = document.getElementById('chk_windows').checked;
   document.getElementById('roof-section').classList.toggle('hidden', !hasRoof);
   document.getElementById('ceiling-section').classList.toggle('hidden', !hasCeil);
   document.getElementById('sikminy-section').classList.toggle('hidden', !hasSikminy);
-  document.getElementById('doors-section').classList.toggle('hidden', !hasDoors);
   document.getElementById('windows-section').classList.toggle('hidden', !hasWin);
-  const anyType = hasRoof || hasCeil || hasSikminy || hasDoors || hasWin;
+  const anyType = hasRoof || hasCeil || hasSikminy || hasWin;
   document.getElementById('split-section').classList.toggle('hidden', !anyType);
   document.getElementById('termin-zalohy-section').classList.toggle('hidden', !anyType);
   document.getElementById('termin-section').classList.toggle('hidden', !anyType || IS_DODATEK);
-  const winOnly = hasWin && !hasRoof && !hasCeil && !hasSikminy && !hasDoors;
+  const winOnly = hasWin && !hasRoof && !hasCeil && !hasSikminy;
   document.getElementById('split-80-20').classList.toggle('hidden', !hasWin);
   document.querySelectorAll('#split-opts label:not(#split-80-20)').forEach(l => l.classList.toggle('hidden', winOnly));
-  document.getElementById('split-note').textContent = winOnly ? 'Pro okna je vždy záloha 80 %, doplatek 20 %.' : '';
+  document.getElementById('split-note').textContent = winOnly ? 'Pro okna a dveře je vždy záloha 80 %, doplatek 20 %.' : '';
   calc();
   updateTermin();
   updateStavebni();
@@ -832,8 +799,7 @@ function getSplitPct() {{
   const winOnly = document.getElementById('chk_windows').checked &&
                   !document.getElementById('chk_roof').checked &&
                   !document.getElementById('chk_ceiling').checked &&
-                  !document.getElementById('chk_sikminy').checked &&
-                  !document.getElementById('chk_doors').checked;
+                  !document.getElementById('chk_sikminy').checked;
   if (winOnly) return 80;
   const r = document.querySelector('input[name=split]:checked');
   if (!r) return null;
@@ -886,39 +852,25 @@ function calc() {{
   const hasRoof    = document.getElementById('chk_roof').checked;
   const hasCeil    = document.getElementById('chk_ceiling').checked;
   const hasSikminy = document.getElementById('chk_sikminy').checked;
-  const hasDoors   = document.getElementById('chk_doors').checked;
   const hasWin     = document.getElementById('chk_windows').checked;
-  if (!hasRoof && !hasCeil && !hasSikminy && !hasDoors && !hasWin) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
+  if (!hasRoof && !hasCeil && !hasSikminy && !hasWin) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
   const qRoof    = hasRoof    ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 0;
   const qCeil    = hasCeil    ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 0;
   const qSimkiny = hasSikminy ? (parseFloat(document.getElementById('qty_m2_sikminy').value) || 0) : 0;
-  const qWinA    = hasWin     ? (parseFloat(document.getElementById('qty_win_a').value)      || 0) : 0;
-  const qWinB    = hasWin     ? (parseFloat(document.getElementById('qty_win_b').value)      || 0) : 0;
-  const qWinC    = hasWin     ? (parseFloat(document.getElementById('qty_win_c').value)      || 0) : 0;
-  const qWinTot  = qWinA + qWinB + qWinC;
+  let okna = {{excl: 0, area: 0, count: 0}};
+  if (hasWin) {{ try {{ okna = oknaTotals(); }} catch (e) {{}} }}
+  const qWinTot  = okna.area;
 
   const lRoof    = LISTED.roof * qRoof, lCeil = LISTED.ceiling * qCeil;
   const lSimkiny = LISTED.roof * qSimkiny;
-  const lWinA    = WIN_RATES.a * qWinA, lWinB = WIN_RATES.b * qWinB, lWinC = WIN_RATES.c * qWinC;
-  const lWin     = lWinA + lWinB + lWinC;
-  const qDoors   = hasDoors ? (parseFloat(document.getElementById('qty_m2_doors').value) || 0) : 0;
-  const DOOR_PRICE = 23277.77; // Kc/m2 incl. VAT, net (after cosmetic disc)
-  const eDoors   = hasDoors ? Math.round(DOOR_PRICE * qDoors) : 0;
-  const lTotal   = lRoof + lCeil + lSimkiny + lWin + eDoors;
+  const lWin     = Math.round(okna.excl * 1.12);  // windows & doors calculator, incl. VAT
+  const lTotal   = lRoof + lCeil + lSimkiny + lWin;
   if (lTotal === 0) {{ document.getElementById('preview').classList.add('hidden'); checkSubmit(); return; }}
 
   const fRoof    = GRANT_RATE.roof * qRoof, fCeil = GRANT_RATE.ceiling * qCeil, fWin = GRANT_RATE.windows * qWinTot;
   const fSimkiny = GRANT_RATE.roof * qSimkiny;
-  const fDoors   = hasDoors ? GRANT_RATE.windows * qDoors : 0;
-  const fTot     = fRoof + fCeil + fSimkiny + fWin + fDoors;
-
-  const hasBlinds = hasWin && document.getElementById('chk_blinds').checked;
-  const hasNets   = hasWin && document.getElementById('chk_nets').checked;
-  const qBlinds   = hasBlinds ? (parseFloat(document.getElementById('qty_blinds').value) || 0) : 0;
-  const qNets     = hasNets   ? (parseFloat(document.getElementById('qty_nets').value)   || 0) : 0;
-  const blindsCost = Math.round(1000 * qBlinds);
-  const netsCost   = Math.round(1000 * qNets);
+  const fTot     = fRoof + fCeil + fSimkiny + fWin;
 
   const _firstName = ((document.getElementById('inp_client_name')?.value || '').trim().split(/\\s+/)[0] || '');
   const DOPRAVA = 100 + 21 * _firstName.length;
@@ -961,27 +913,15 @@ function calc() {{
 
   // eWin = listed price always; grant reduces clientPays directly via grantReceived
   const eWin   = lWin;
-  const eTotal = eRoof + eCeil + eSimkiny + eWin + eDoors;
+  const eTotal = eRoof + eCeil + eSimkiny + eWin;
   const grantUsed  = Math.min(grantReceived, eTotal);
   const clientPays = Math.max(DOPRAVA, eTotal + DOPRAVA - grantReceived);
   const dRoof  = lRoof > 0 ? Math.max(0, (1 - eRoof / lRoof)) * 100 : 0;
   const dCeil  = lCeil > 0 ? Math.max(0, (1 - eCeil / lCeil)) * 100 : 0;
 
-  // Per-type grant per m² for windows (uniform across all m²)
-  const grantPerM2Win   = (hasGrant() && fTot > 0 && qWinTot > 0)
-    ? grantReceived * fWin   / (fTot * qWinTot)
-    : 0;
-  const grantPerM2Doors = (hasGrant() && fTot > 0 && qDoors > 0)
-    ? grantReceived * fDoors / (fTot * qDoors)
-    : 0;
-  const eligDoors = hasDoors ? Math.max(0, Math.round((DOOR_PRICE - grantPerM2Doors) * qDoors)) : 0;
   document.getElementById('inp_elig_roof').value    = Math.round(eRoof);
   document.getElementById('inp_elig_ceiling').value = Math.round(eCeil);
   document.getElementById('inp_elig_sikminy').value = Math.round(eSimkiny);
-  document.getElementById('inp_elig_doors').value   = eligDoors;
-  document.getElementById('inp_elig_win_a').value   = Math.max(0, Math.round((WIN_RATES.a - grantPerM2Win) * qWinA));
-  document.getElementById('inp_elig_win_b').value   = Math.max(0, Math.round((WIN_RATES.b - grantPerM2Win) * qWinB));
-  document.getElementById('inp_elig_win_c').value   = Math.max(0, Math.round((WIN_RATES.c - grantPerM2Win) * qWinC));
   document.getElementById('inp_disc_roof').value    = dRoof.toFixed(4);
   document.getElementById('inp_disc_ceiling').value = dCeil.toFixed(4);
   document.getElementById('inp_grant_amount').value = Math.round(grantUsed);
@@ -1002,21 +942,21 @@ function calc() {{
   document.getElementById('pv-custom-row').classList.toggle('hidden', customTotal === 0);
   if (customTotal > 0) document.getElementById('pv-custom').textContent = fmt(customTotal);
 
-  const grandTotal = eTotal + DOPRAVA + pochoziPrice + blindsCost + netsCost + customTotal;
+  const grandTotal = eTotal + DOPRAVA + pochoziPrice + customTotal;
   const dTotal = lTotal > 0 ? Math.max(0, (1 - eTotal / lTotal)) * 100 : 0;
   document.getElementById('pv-disc').textContent = dTotal.toFixed(1) + ' %';
   document.getElementById('pv-disc-row').classList.toggle('hidden', dTotal < 0.5);
 
   const grantOn = hasGrant();
-  document.getElementById('pv-base').textContent  = fmt(lTotal + blindsCost + netsCost);
-  document.getElementById('pv-windows').textContent = fmt(lWin + blindsCost + netsCost);
+  document.getElementById('pv-base').textContent  = fmt(lTotal);
+  document.getElementById('pv-windows').textContent = fmt(lWin);
   document.getElementById('pv-windows-row').classList.toggle('hidden', !hasWin || lWin === 0);
   document.getElementById('pv-total').textContent = fmt(grandTotal);
   document.getElementById('pv-grant-row').classList.toggle('hidden', !grantOn);
   document.getElementById('pv-client-row').classList.toggle('hidden', !grantOn);
   if (grantOn) {{
     document.getElementById('pv-grant').textContent  = fmt(grantReceived);
-    document.getElementById('pv-client').textContent = fmt(clientPays + pochoziPrice + blindsCost + netsCost);
+    document.getElementById('pv-client').textContent = fmt(clientPays + pochoziPrice);
   }}
 
   if (hasRoof && qRoof > 0) {{
@@ -1040,9 +980,8 @@ function calc() {{
   showRate('pv-rate-roof-row',    'pv-rate-roof',    hasRoof    ? qRoof    : 0, eRoof,    roofFloorHit);
   showRate('pv-rate-ceil-row',    'pv-rate-ceil',    hasCeil    ? qCeil    : 0, eCeil,    ceilFloorHit);
   showRate('pv-rate-sikminy-row', 'pv-rate-sikminy', hasSikminy ? qSimkiny : 0, eSimkiny, sikminyFloorHit);
-  showRate('pv-doors-row', 'pv-doors', hasDoors ? qDoors : 0, eligDoors, false);
 
-  const winOnly  = hasWin && !hasRoof && !hasCeil && !hasSikminy && !hasDoors;
+  const winOnly  = hasWin && !hasRoof && !hasCeil && !hasSikminy;
   const splitVal = winOnly ? '80-20' : (getSplit() || '');
   const splitBase = grandTotal;
   if (splitVal) {{
@@ -1067,11 +1006,10 @@ function checkSubmit() {{
   const hasCeil    = document.getElementById('chk_ceiling').checked;
   const hasSikminy = document.getElementById('chk_sikminy').checked;
   const hasWin     = document.getElementById('chk_windows').checked;
-  const hasDoors   = document.getElementById('chk_doors').checked;
   const missing = [];
 
-  if (!hasRoof && !hasCeil && !hasSikminy && !hasDoors && !hasWin) {{
-    missing.push('Vyberte alespoň jednu kategorii (střecha, strop, šikminy, dveře, okna)');
+  if (!hasRoof && !hasCeil && !hasSikminy && !hasWin) {{
+    missing.push('Vyberte alespoň jednu kategorii (střecha, strop, šikminy, okna a dveře)');
   }} else {{
     const matRoof    = hasRoof    ? document.querySelector('input[name=material_roof]:checked')?.value    : 'ok';
     const matCeil    = hasCeil    ? document.querySelector('input[name=material_ceiling]:checked')?.value : 'ok';
@@ -1079,20 +1017,13 @@ function checkSubmit() {{
     const qRoof    = hasRoof    ? (parseFloat(document.getElementById('qty_m2_roof').value)    || 0) : 1;
     const qCeil    = hasCeil    ? (parseFloat(document.getElementById('qty_m2_ceiling').value) || 0) : 1;
     const qSimkiny = hasSikminy ? (parseFloat(document.getElementById('qty_m2_sikminy').value) || 0) : 1;
-    const qDoors   = hasDoors   ? (parseFloat(document.getElementById('qty_m2_doors').value)   || 0) : 1;
-    const qWinA    = hasWin     ? (parseFloat(document.getElementById('qty_win_a').value) || 0) : 0;
-    const qWinB    = hasWin     ? (parseFloat(document.getElementById('qty_win_b').value) || 0) : 0;
-    const qWinC    = hasWin     ? (parseFloat(document.getElementById('qty_win_c').value) || 0) : 0;
-    const qWinTot  = qWinA + qWinB + qWinC;
-    const winOnly  = hasWin && !hasRoof && !hasCeil && !hasSikminy && !hasDoors;
+    const oknaCount = hasWin ? oknaItems.length : 0;
+    const winOnly  = hasWin && !hasRoof && !hasCeil && !hasSikminy;
     const split    = winOnly ? '80-20' : getSplit();
     const eTotal = parseFloat(document.getElementById('inp_elig_roof').value    || 0)
                  + parseFloat(document.getElementById('inp_elig_ceiling').value || 0)
                  + parseFloat(document.getElementById('inp_elig_sikminy').value || 0)
-                 + parseFloat(document.getElementById('inp_elig_doors').value   || 0)
-                 + parseFloat(document.getElementById('inp_elig_win_a').value   || 0)
-                 + parseFloat(document.getElementById('inp_elig_win_b').value   || 0)
-                 + parseFloat(document.getElementById('inp_elig_win_c').value   || 0);
+                 + oknaCount;
     const terminDays   = document.querySelector('input[name=termin_days]:checked');
     const terminZalohy2 = document.querySelector('input[name=termin_zalohy_2]:checked');
     const clientPhone  = (document.getElementById('client_phone')?.value || '').replace(/[\\s\\-().+]/g, '');
@@ -1104,8 +1035,7 @@ function checkSubmit() {{
     if (hasCeil    && qCeil <= 0)     missing.push('Zadejte plochu stropu (m²)');
     if (hasSikminy && !matSikminy)    missing.push('Vyberte materiál šikminy');
     if (hasSikminy && qSimkiny <= 0)  missing.push('Zadejte plochu šikminy (m²)');
-    if (hasDoors   && qDoors   <= 0)   missing.push('Zadejte plochu dveří (m²)');
-    if (hasWin     && qWinTot <= 0)   missing.push('Zadejte plochu oken (m²)');
+    if (hasWin     && oknaCount === 0) missing.push('Přidejte alespoň jednu položku oken / dveří');
     if (!winOnly && !split)     missing.push('Vyberte způsob platby (záloha / doplatek)');
     if (!terminDays && !IS_DODATEK) missing.push('Vyberte termín dokončení');
     if (IS_DODATEK && !/^\\s*\\d{{1,2}}\\s*\\.\\s*\\d{{1,2}}\\s*\\.\\s*\\d{{4}}\\s*$/.test(document.getElementById('smlouva_datum').value))
@@ -1127,36 +1057,9 @@ function checkSubmit() {{
   document.getElementById('submitBtn').disabled = missing.length > 0;
 }}
 
-function winTotalM2() {{
-  return (parseFloat(document.getElementById('qty_win_a').value) || 0)
-       + (parseFloat(document.getElementById('qty_win_b').value) || 0)
-       + (parseFloat(document.getElementById('qty_win_c').value) || 0);
-}}
-
-function onWinQtyChange() {{
-  const tot = winTotalM2();
-  ['qty_blinds', 'qty_nets'].forEach(function(id) {{
-    const el = document.getElementById(id);
-    if (!el.dataset.userSet) el.value = tot || '';
-  }});
-  calc();
-}}
-
-function onBlindsNetsChange(which) {{
-  const chkId   = which === 'blinds' ? 'chk_blinds'   : 'chk_nets';
-  const secId   = which === 'blinds' ? 'blinds-qty-section' : 'nets-qty-section';
-  const qtyId   = which === 'blinds' ? 'qty_blinds'   : 'qty_nets';
-  const checked = document.getElementById(chkId).checked;
-  document.getElementById(secId).classList.toggle('hidden', !checked);
-  if (checked) {{
-    const el = document.getElementById(qtyId);
-    if (!el.dataset.userSet) el.value = winTotalM2() || '';
-  }}
-  calc();
-}}
-
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
 document.getElementById('mainForm').addEventListener('submit', function() {{
+  oknaSerialize();
   const items = [];
   document.querySelectorAll('#custom-items-list .custom-item-row').forEach(function(row) {{
     const desc  = (row.querySelector('.ci-desc').value  || '').trim();
@@ -1202,7 +1105,6 @@ function prefillForm(d, templateMode) {{
   if (d.has_roof)    document.getElementById('chk_roof').checked    = true;
   if (d.has_ceiling) document.getElementById('chk_ceiling').checked = true;
   if (d.has_sikminy) document.getElementById('chk_sikminy').checked = true;
-  if (d.has_doors)   document.getElementById('chk_doors').checked   = true;
   if (d.has_windows) document.getElementById('chk_windows').checked = true;
   onTypesChange();
   radio('material_roof',    d.material_roof);
@@ -1213,12 +1115,6 @@ function prefillForm(d, templateMode) {{
   setVal('qty_m2_roof',       d.qty_m2_roof);
   setVal('qty_m2_ceiling',    d.qty_m2_ceiling);
   setVal('qty_m2_sikminy',    d.qty_m2_sikminy);
-  setVal('qty_m2_doors',      d.qty_m2_doors);
-  setVal('qty_win_a',         d.qty_win_a);
-  setVal('qty_win_b',         d.qty_win_b);
-  setVal('qty_win_c',         d.qty_win_c);
-  setVal('qty_blinds',        d.qty_blinds);
-  setVal('qty_nets',          d.qty_nets);
   setVal('qty_5100',          d.qty_5100);
   setVal('qty_5101',          d.qty_5101);
   setVal('thickness_roof',    d.thickness_roof);
@@ -1243,14 +1139,7 @@ function prefillForm(d, templateMode) {{
     const grkEl = document.getElementById('remaining_grant_k');
     if (grkEl) grkEl.value = d.remaining_grant_k !== undefined ? d.remaining_grant_k : grkEl.value;
   }}
-  if (d.has_blinds) {{
-    document.getElementById('chk_blinds').checked = true;
-    document.getElementById('blinds-qty-section').classList.remove('hidden');
-  }}
-  if (d.has_nets) {{
-    document.getElementById('chk_nets').checked = true;
-    document.getElementById('nets-qty-section').classList.remove('hidden');
-  }}
+  oknaLoad(d.okna_items || '[]', d.okna_prace || '');
   ['extra_5000a','extra_5000b','extra_5000c'].forEach(function(n) {{
     if (d[n]) {{ const el = document.querySelector('input[name="' + n + '"]'); if (el) el.checked = true; }}
   }});
@@ -1276,6 +1165,7 @@ function prefillForm(d, templateMode) {{
   if (d.stavebni_pripravenost_manual && d.stavebni_pripravenost) manualField('stavebni_pripravenost', d.stavebni_pripravenost); else updateStavebni();
   checkSubmit();
 }}
+oknaInit();
 (function() {{ prefillForm({draft_json}); }})();
 
 const _historyKey = '{key}';
@@ -1334,7 +1224,7 @@ function historyLoad(logId) {{
     }})
     .then(function(form) {{
       closeHistoryOverlay();
-      ['chk_roof','chk_ceiling','chk_sikminy','chk_doors','chk_windows','chk_blinds','chk_nets'].forEach(function(id) {{
+      ['chk_roof','chk_ceiling','chk_sikminy','chk_windows'].forEach(function(id) {{
         const el = document.getElementById(id); if (el) el.checked = false;
       }});
       onTypesChange();
@@ -1449,28 +1339,15 @@ def order_form_post(
     has_ceiling: str = Form(''),
     has_windows: str = Form(''),
     has_sikminy: str = Form(''),
-    has_doors: str = Form(''),
     material_roof: str = Form(None),
     material_ceiling: str = Form(None),
     material_sikminy: str = Form(None),
     qty_m2_roof: str = Form(''),
     qty_m2_ceiling: str = Form(''),
     qty_m2_sikminy: str = Form(''),
-    qty_m2_doors: str = Form(''),
-    qty_win_a: str = Form(''),
-    qty_win_b: str = Form(''),
-    qty_win_c: str = Form(''),
-    has_blinds: str = Form(''),
-    qty_blinds: str = Form(''),
-    has_nets: str = Form(''),
-    qty_nets: str = Form(''),
     eligible_roof: float = Form(0),
     eligible_ceiling: float = Form(0),
-    eligible_win_a: float = Form(0),
-    eligible_win_b: float = Form(0),
-    eligible_win_c: float = Form(0),
     eligible_sikminy: float = Form(0),
-    eligible_doors: float = Form(0),
     discount_pct_roof: float = Form(0),
     discount_pct_ceiling: float = Form(0),
     grant_amount: float = Form(0),
@@ -1497,6 +1374,8 @@ def order_form_post(
     client_phone: str = Form(''),
     client_dob: str = Form(''),
     custom_items: str = Form('[]'),
+    okna_items: str = Form('[]'),
+    okna_prace: str = Form(''),
     grant_enabled_val: str = Form('1'),
     remaining_grant_k_val: str = Form(''),
     termin_days_val: str = Form(''),
@@ -1514,18 +1393,12 @@ def order_form_post(
             order_id=order_id, key=key, test=test,
             has_roof=has_roof, has_ceiling=has_ceiling, has_windows=has_windows,
             has_sikminy=has_sikminy,
-            has_doors=has_doors,
             material_roof=material_roof, material_ceiling=material_ceiling,
             material_sikminy=material_sikminy,
             qty_m2_roof=qty_m2_roof, qty_m2_ceiling=qty_m2_ceiling,
             qty_m2_sikminy=qty_m2_sikminy,
-            qty_m2_doors=qty_m2_doors,
-            qty_win_a=qty_win_a, qty_win_b=qty_win_b, qty_win_c=qty_win_c,
-            has_blinds=has_blinds, qty_blinds=qty_blinds, has_nets=has_nets, qty_nets=qty_nets,
             eligible_roof=eligible_roof, eligible_ceiling=eligible_ceiling,
-            eligible_win_a=eligible_win_a, eligible_win_b=eligible_win_b, eligible_win_c=eligible_win_c,
             eligible_sikminy=eligible_sikminy,
-            eligible_doors=eligible_doors,
             discount_pct_roof=discount_pct_roof, discount_pct_ceiling=discount_pct_ceiling,
             grant_amount=grant_amount, split=split,
             extra_5000a=extra_5000a, extra_5000b=extra_5000b, extra_5000c=extra_5000c,
@@ -1538,7 +1411,7 @@ def order_form_post(
             client_name=client_name, client_street=client_street, client_zip=client_zip,
             client_city=client_city, client_email=client_email, client_phone=client_phone,
             client_dob=client_dob,
-            custom_items=custom_items,
+            custom_items=custom_items, okna_items=okna_items, okna_prace=okna_prace,
             grant_enabled_val=grant_enabled_val,
             remaining_grant_k_val=remaining_grant_k_val,
             termin_days_val=termin_days_val,
@@ -1566,16 +1439,14 @@ def _compute_order(call, f):
     Shared by the order form (writes them to the order) and the dodatek form (keeps them local)."""
     client_name, custom_items, split, grant_amount = f['client_name'], f['custom_items'], f['split'], f['grant_amount']
     has_roof, has_ceiling, has_sikminy = f['has_roof'], f['has_ceiling'], f['has_sikminy']
-    has_doors, has_windows, has_blinds, has_nets = f['has_doors'], f['has_windows'], f['has_blinds'], f['has_nets']
+    has_windows = f['has_windows']
+    okna_items, okna_prace = f.get('okna_items') or '[]', f.get('okna_prace') or ''
     material_roof, material_ceiling, material_sikminy = f['material_roof'], f['material_ceiling'], f['material_sikminy']
     thickness_roof, thickness_ceiling, thickness_sikminy = f['thickness_roof'], f['thickness_ceiling'], f['thickness_sikminy']
-    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy, qty_m2_doors = f['qty_m2_roof'], f['qty_m2_ceiling'], f['qty_m2_sikminy'], f['qty_m2_doors']
-    qty_win_a, qty_win_b, qty_win_c = f['qty_win_a'], f['qty_win_b'], f['qty_win_c']
-    qty_blinds, qty_nets, qty_5100, qty_5101 = f['qty_blinds'], f['qty_nets'], f['qty_5100'], f['qty_5101']
+    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy = f['qty_m2_roof'], f['qty_m2_ceiling'], f['qty_m2_sikminy']
+    qty_5100, qty_5101 = f['qty_5100'], f['qty_5101']
     extra_5000a, extra_5000b, extra_5000c = f['extra_5000a'], f['extra_5000b'], f['extra_5000c']
     eligible_roof, eligible_ceiling, eligible_sikminy = f['eligible_roof'], f['eligible_ceiling'], f['eligible_sikminy']
-    eligible_doors = f['eligible_doors']
-    eligible_win_a, eligible_win_b, eligible_win_c = f['eligible_win_a'], f['eligible_win_b'], f['eligible_win_c']
 
     TAX_RATE = 1.12
     LISTED = {'roof': 2002, 'ceiling': 751, 'windows': 8000}
@@ -1585,14 +1456,13 @@ def _compute_order(call, f):
     if has_roof:    active_types.append('roof')
     if has_ceiling: active_types.append('ceiling')
     if has_sikminy: active_types.append('sikminy')
-    if has_doors:   active_types.append('doors')
     if has_windows: active_types.append('windows')
 
     if not active_types:
         raise HTTPException(status_code=400, detail='Zadejte alespoň jeden typ práce')
 
     # Determine split percentages
-    win_only = has_windows and not has_roof and not has_ceiling and not has_sikminy and not has_doors
+    win_only = has_windows and not has_roof and not has_ceiling and not has_sikminy
     if win_only:
         split_pct = (80, 20)
     elif split:
@@ -1672,65 +1542,34 @@ def _compute_order(call, f):
             'discount': COSMETIC_DISC,
         }))
 
-    if has_doors:
-        qty = float(qty_m2_doors or 0)
-        if qty > 0:
-            prods = call('product.product', 'search_read',
-                         [[['default_code', '=', '4100']]], {'fields': ['id', 'name'], 'limit': 1})
-            if not prods:
-                raise HTTPException(status_code=400, detail='Produkt [4100] nenalezen v Odoo')
-            DOOR_PRICE_INCL = 23277.77
-            unit_price_incl = DOOR_PRICE_INCL / (1 - COSMETIC_DISC / 100)
-            order_lines.append((0, 0, {
-                'product_id': prods[0]['id'],
-                'name': prods[0].get('name', 'Dveře'),
-                'product_uom_qty': qty,
-                'price_unit': round(unit_price_incl / TAX_RATE, 2),
-                'discount': COSMETIC_DISC,
-            }))
-
+    # Windows & doors: lines recomputed from the calculator items (prices from okna_cenik_2026.json, without VAT)
+    okna_excl = 0
     if has_windows:
-        win_prods = call('product.product', 'search_read',
-                         [[['default_code', 'in', ['4000A', '4000B', '4000C']]]],
-                         {'fields': ['id', 'default_code'], 'limit': 3})
-        win_map = {p['default_code']: p for p in win_prods}
-        WIN_LISTED = {'4000A': 9000, '4000B': 9900, '4000C': 10800}
-        for code, qty_str in [
-            ('4000A', qty_win_a),
-            ('4000B', qty_win_b),
-            ('4000C', qty_win_c),
-        ]:
-            qty = float(qty_str or 0)
-            if qty > 0 and code in win_map:
-                listed_rate = WIN_LISTED[code]
-                order_lines.append((0, 0, {
-                    'product_id': win_map[code]['id'],
-                    'product_uom_qty': qty,
-                    'price_unit': round(listed_rate / (1 - COSMETIC_DISC / 100) / TAX_RATE, 2),
-                    'discount': COSMETIC_DISC,
-                }))
-        qty_blinds_f = float(qty_blinds or 0) if has_blinds else 0.0
-        qty_nets_f   = float(qty_nets   or 0) if has_nets   else 0.0
-        if qty_blinds_f > 0:
-            bp = call('product.product', 'search_read',
-                      [[['default_code', '=', '4001A']]], {'fields': ['id'], 'limit': 1})
-            if bp:
-                order_lines.append((0, 0, {
-                    'product_id': bp[0]['id'],
-                    'product_uom_qty': qty_blinds_f,
-                    'price_unit': round(1000 / (1 - COSMETIC_DISC / 100) / TAX_RATE, 2),
-                    'discount': COSMETIC_DISC,
-                }))
-        if qty_nets_f > 0:
-            np_ = call('product.product', 'search_read',
-                       [[['default_code', '=', '4001B']]], {'fields': ['id'], 'limit': 1})
-            if np_:
-                order_lines.append((0, 0, {
-                    'product_id': np_[0]['id'],
-                    'product_uom_qty': qty_nets_f,
-                    'price_unit': round(1000 / (1 - COSMETIC_DISC / 100) / TAX_RATE, 2),
-                    'discount': COSMETIC_DISC,
-                }))
+        import json as _jsonw
+        try:
+            okna_list = okna.normalize_items(_jsonw.loads(okna_items or '[]'))
+            okna_work = _jsonw.loads(okna_prace) if okna_prace else None
+            okna_rows = okna.lines(okna_list, okna_work)
+            okna_excl = okna.total_without_vat(okna_rows)
+        except (okna.CenikError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f'Okna a dveře: {exc}')
+        if not okna_list:
+            raise HTTPException(status_code=400, detail='Přidejte alespoň jednu položku oken / dveří.')
+        codes = sorted({r['code'] for r in okna_rows})
+        okna_prods = {p['default_code']: p['id'] for p in call(
+            'product.product', 'search_read', [[['default_code', 'in', codes]]], {'fields': ['id', 'default_code']})}
+        missing = [c for c in codes if c not in okna_prods]
+        if missing:
+            raise HTTPException(status_code=400, detail=f'Produkty {", ".join(missing)} nenalezeny v Odoo (setup_okna_products.py).')
+        for r in okna_rows:
+            order_lines.append((0, 0, {
+                'product_id': okna_prods[r['code']],
+                'name': r['name'],
+                'product_uom_qty': r['qty'],
+                'product_uom_id': OKNA_UOM_IDS[r['unit']],
+                'price_unit': okna.unit_price(r['price']),
+                'discount': okna.COSMETIC_DISC,
+            }))
 
     if doprava_prods:
         order_lines.append((0, 0, {
@@ -1775,8 +1614,6 @@ def _compute_order(call, f):
                     'discount': 12,
                 }))
 
-    blinds_cost = round(1000 * (float(qty_blinds or 0) if has_blinds else 0.0))
-    nets_cost   = round(1000 * (float(qty_nets   or 0) if has_nets   else 0.0))
     import json as _json
     custom_items_list = []
     try:
@@ -1807,19 +1644,9 @@ def _compute_order(call, f):
         float(item.get('qty') or 0) * float(item.get('price') or 0) * TAX_RATE
         for item in custom_items_list
     ))
-    total = eligible_roof + eligible_ceiling + eligible_sikminy + eligible_doors + eligible_win_a + eligible_win_b + eligible_win_c + blinds_cost + nets_cost + doprava_price + pochozi_total_incl + custom_total_incl
-    # eligible_doors and eligible_win_* are net client cost (listed price minus grant/m²).
-    # Restore full listed prices so that subtracting grant_amount once gives the correct result.
+    okna_incl = round(okna_excl * TAX_RATE)
+    total = eligible_roof + eligible_ceiling + eligible_sikminy + okna_incl + doprava_price + pochozi_total_incl + custom_total_incl
     total_for_split = total
-    if has_doors:
-        _doors_full = round(23277.77 * float(qty_m2_doors or 0))
-        total_for_split = total_for_split - eligible_doors + _doors_full
-    if has_windows:
-        _win_full = (9000 * float(qty_win_a or 0) +
-                     9900 * float(qty_win_b or 0) +
-                     10800 * float(qty_win_c or 0))
-        _win_net  = eligible_win_a + eligible_win_b + eligible_win_c
-        total_for_split = total_for_split - _win_net + _win_full
     zaloha   = round(total_for_split * split_pct[0] / 100)
     doplatek = round(total_for_split * split_pct[1] / 100)
     client_pays = round(total_for_split - grant_amount)
@@ -1834,14 +1661,11 @@ def _compute_order(call, f):
 
 def _order_form_post_inner(
     order_id, key, test,
-    has_roof, has_ceiling, has_windows, has_sikminy, has_doors,
+    has_roof, has_ceiling, has_windows, has_sikminy,
     material_roof, material_ceiling, material_sikminy,
-    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy, qty_m2_doors,
-    qty_win_a, qty_win_b, qty_win_c,
-    has_blinds, qty_blinds, has_nets, qty_nets,
+    qty_m2_roof, qty_m2_ceiling, qty_m2_sikminy,
     eligible_roof, eligible_ceiling,
-    eligible_win_a, eligible_win_b, eligible_win_c,
-    eligible_sikminy, eligible_doors,
+    eligible_sikminy,
     discount_pct_roof, discount_pct_ceiling,
     grant_amount, split,
     extra_5000a, extra_5000b, extra_5000c,
@@ -1854,6 +1678,8 @@ def _order_form_post_inner(
     client_city, client_email, client_phone,
     client_dob,
     custom_items='[]',
+    okna_items='[]',
+    okna_prace='',
     grant_enabled_val='1',
     remaining_grant_k_val='',
     termin_days_val='',
@@ -1982,17 +1808,13 @@ def _order_form_post_inner(
         'order_name': updated['name'], 'test': test,
         'form': {
             'has_roof': bool(has_roof), 'has_ceiling': bool(has_ceiling),
-            'has_sikminy': bool(has_sikminy), 'has_doors': bool(has_doors),
-            'has_windows': bool(has_windows), 'has_blinds': bool(has_blinds),
-            'has_nets': bool(has_nets), 'extra_5000a': bool(extra_5000a),
+            'has_sikminy': bool(has_sikminy), 'has_windows': bool(has_windows),
+            'extra_5000a': bool(extra_5000a),
             'extra_5000b': bool(extra_5000b), 'extra_5000c': bool(extra_5000c),
             'material_roof': material_roof or '', 'material_ceiling': material_ceiling or '',
             'material_sikminy': material_sikminy or '', 'split': split or '',
             'qty_m2_roof': qty_m2_roof or '', 'qty_m2_ceiling': qty_m2_ceiling or '',
-            'qty_m2_sikminy': qty_m2_sikminy or '', 'qty_m2_doors': qty_m2_doors or '',
-            'qty_win_a': qty_win_a or '', 'qty_win_b': qty_win_b or '',
-            'qty_win_c': qty_win_c or '', 'qty_blinds': qty_blinds or '',
-            'qty_nets': qty_nets or '', 'qty_5100': qty_5100 or '',
+            'qty_m2_sikminy': qty_m2_sikminy or '', 'qty_5100': qty_5100 or '',
             'qty_5101': qty_5101 or '', 'thickness_roof': thickness_roof or '',
             'thickness_ceiling': thickness_ceiling or '', 'thickness_sikminy': thickness_sikminy or '',
             'termin_dokonceni': termin_dokonceni or '', 'termin_zalohy_2': termin_zalohy_2 or '',
@@ -2008,6 +1830,7 @@ def _order_form_post_inner(
             'client_zip': client_zip or '', 'client_city': client_city or '',
             'client_email': client_email or '', 'client_phone': client_phone or '',
             'client_dob': client_dob or '', 'custom_items': custom_items or '[]',
+            'okna_items': okna_items or '[]', 'okna_prace': okna_prace or '',
         },
     }
 
@@ -2324,12 +2147,12 @@ _DODATEK_ORDER_FIELDS = ['name', 'state', 'partner_id', 'opportunity_id', 'user_
                          'x_studio_datum_podpisu_smlouvy', 'x_studio_termin_zalohy_2',
                          'x_studio_zaloha_kc', 'x_studio_doplatek_kc', 'x_studio_vyse_dotace_kc']
 # form fields as the order form posts them (FastAPI Form() defaults of order_form_post)
-_FORM_FLOATS = ('eligible_roof', 'eligible_ceiling', 'eligible_win_a', 'eligible_win_b', 'eligible_win_c',
-                'eligible_sikminy', 'eligible_doors', 'discount_pct_roof', 'discount_pct_ceiling', 'grant_amount')
+_FORM_FLOATS = ('eligible_roof', 'eligible_ceiling', 'eligible_sikminy',
+                'discount_pct_roof', 'discount_pct_ceiling', 'grant_amount')
 _FORM_NONES = ('material_roof', 'material_ceiling', 'material_sikminy', 'split', 'termin_zalohy_2')
-_FORM_STRS = ('has_roof', 'has_ceiling', 'has_windows', 'has_sikminy', 'has_doors',
-              'qty_m2_roof', 'qty_m2_ceiling', 'qty_m2_sikminy', 'qty_m2_doors', 'qty_win_a', 'qty_win_b', 'qty_win_c',
-              'has_blinds', 'qty_blinds', 'has_nets', 'qty_nets', 'extra_5000a', 'extra_5000b', 'extra_5000c',
+_FORM_STRS = ('has_roof', 'has_ceiling', 'has_windows', 'has_sikminy',
+              'qty_m2_roof', 'qty_m2_ceiling', 'qty_m2_sikminy', 'okna_prace',
+              'extra_5000a', 'extra_5000b', 'extra_5000c',
               'qty_5100', 'qty_5101', 'thickness_roof', 'thickness_ceiling', 'thickness_sikminy',
               'client_name', 'client_street', 'client_zip', 'client_city', 'client_email', 'client_phone',
               'client_dob', 'grant_enabled_val', 'remaining_grant_k_val', 'smlouva_datum')
@@ -2465,14 +2288,8 @@ def _form_from_order(call, order):
             th = re.search(r'(\d+)\s*cm', ln.get('name') or '')
             if th:
                 f[f'thickness_{kind}'] = th.group(1)
-        elif code == '4100':
-            f.update({'has_doors': True, 'qty_m2_doors': q})
-        elif code in ('4000A', '4000B', '4000C'):
-            f.update({'has_windows': True, f'qty_win_{code[-1].lower()}': q})
-        elif code == '4001A':
-            f.update({'has_blinds': True, 'qty_blinds': q})
-        elif code == '4001B':
-            f.update({'has_nets': True, 'qty_nets': q})
+        elif code in okna.ALL_CODES or code in ('4100', '4000A', '4000B', '4000C', '4001A', '4001B'):
+            f['has_windows'] = True  # windows/doors can't be rebuilt from lines: re-enter them in the calculator
         elif code in ('5100', '5101'):
             f[f'qty_{code}'] = q
         elif code in ('5000A', '5000B', '5000C'):
@@ -2632,7 +2449,7 @@ async def dodatek_form_post(request: Request):
     f.update({k: raw.get(k) or None for k in _FORM_NONES})
     f.update({k: float(raw.get(k) or 0) for k in _FORM_FLOATS})
     f.update(order_id=int(raw.get('order_id')), key=raw.get('key'), test=int(raw.get('test') or 0),
-             custom_items=raw.get('custom_items') or '[]')
+             custom_items=raw.get('custom_items') or '[]', okna_items=raw.get('okna_items') or '[]')
     import traceback as _tb
     try:
         return await run_in_threadpool(_dodatek_preview, f)
@@ -2647,7 +2464,7 @@ def _dodatek_preview(f):
     import uuid as _uuid, time as _time
     call = _odoo_call()
     order = call('sale.order', 'read', [[f['order_id']]], {'fields': _DODATEK_ORDER_FIELDS})[0]
-    if not any(f.get(k) for k in ('has_roof', 'has_ceiling', 'has_sikminy', 'has_doors', 'has_windows')):
+    if not any(f.get(k) for k in ('has_roof', 'has_ceiling', 'has_sikminy', 'has_windows')):
         raise HTTPException(status_code=400, detail='Zadejte alespoň jeden typ práce')
     smlouva_datum = _iso_date(f.get('smlouva_datum'))
     if not smlouva_datum:
@@ -2674,9 +2491,9 @@ def _dodatek_preview(f):
     token = _uuid.uuid4().hex
     form_snapshot = {k: f[k] for k in _FORM_STRS + _FORM_NONES if f.get(k) not in (None, '')}
     form_snapshot.update({k: bool(f.get(k)) for k in (
-        'has_roof', 'has_ceiling', 'has_sikminy', 'has_doors', 'has_windows', 'has_blinds', 'has_nets',
+        'has_roof', 'has_ceiling', 'has_sikminy', 'has_windows',
         'extra_5000a', 'extra_5000b', 'extra_5000c')})
-    form_snapshot.update(custom_items=f['custom_items'],
+    form_snapshot.update(custom_items=f['custom_items'], okna_items=f['okna_items'],
                          grant_enabled=f.get('grant_enabled_val') not in ('', '0', 'false', 'False'),
                          remaining_grant_k=f.get('remaining_grant_k_val') or '')
     _drafts[token] = {

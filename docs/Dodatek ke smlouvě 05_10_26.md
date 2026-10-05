@@ -12,6 +12,8 @@ Na objednávce, ke které už byla odeslána nebo podepsána smlouva, je v záhl
 
 Otevře se stejný formulář jako u objednávky, **předvyplněný podle smlouvy**: typy prací, materiály, plochy, tloušťky, okna, doplňky, vlastní položky, záloha/doplatek a dotace. Stačí upravit, co se mění.
 
+Hodnoty se berou z posledního **odeslaného** formuláře k této objednávce, tedy z toho, co klient skutečně dostal ve smlouvě. U starších objednávek, které formulářem neprošly, se doplní z položek objednávky. Před odesláním je vždy zkontrolujte.
+
 Oproti objednávce ve formuláři **chybí**:
 - Popis díla
 - Adresa realizace
