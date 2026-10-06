@@ -8,14 +8,18 @@ Okna a dveře se už nezadávají v m², ale **po kusech**, stejně jako v kalku
 2. Vyberte **typ výplně**: okno 1-, 2- nebo 3-křídlé, balkónové dveře 1- nebo 2-křídlé, vchodové dveře 1- nebo 2-křídlé.
 3. Vyberte **povrch**: bílá, dekor 1-stranný nebo dekor 2-stranný.
 4. Zadejte **šířku a výšku v mm** a **počet kusů**. Sklo (trojsklo/dvojsklo) je jen informativní a cenu nemění.
-5. Pod rozměrem se hned ukáže **cena výplně** za kus bez DPH. Rozměr se zaokrouhluje nahoru na nejbližší rozměr v ceníku. Pokud je mimo ceník, zobrazí se červeně a položku nelze přidat.
+5. Pod rozměrem se hned ukáže **cena výplně** za kus bez DPH a **plocha** v m² (za kus i celkem za počet kusů). Rozměr se zaokrouhluje nahoru na nejbližší rozměr v ceníku. Pokud je mimo ceník, zobrazí se červeně a položku nelze přidat.
 6. Podle potřeby zaškrtněte **příslušenství**:
    - **Parapet vnitřní PVC**: hloubka, skupina (bílá / dekor) a délka v **metrech**
    - **Žaluzie** (interiér): šířka × výška v mm
    - **Síť proti hmyzu**: šířka × výška v mm
-7. Klikněte na **„+ Přidat položku"**. Položka se přidá do seznamu.
+7. Klikněte na **„Přidat okna / dveře s danými parametry"**. Položka se přidá do seznamu.
 
-Kliknutím na položku v seznamu ji můžete upravit, křížkem ji odeberete.
+Kliknutím na položku v seznamu ji můžete upravit, křížkem ji odeberete. Pod seznamem je **celková plocha** všech oken a dveří.
+
+**Vchodové dveře 1-křídlé** mají naši původní cenu dveří: **23 277,77 Kč/m² vč. DPH** podle skutečné plochy (např. 900 × 2000 mm = 41 900 Kč), u všech povrchů. Ostatní typy jsou podle ceníku portálu.
+
+Délka parapetu a rozměry žaluzie a sítě se předvyplní podle rozměru výplně. Pokud je přepíšete, vaše hodnota zůstane.
 
 ## Služby
 

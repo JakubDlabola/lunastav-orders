@@ -54,6 +54,9 @@ def vypln(povrch, typ, sirka, vyska):
     if i is None or j is None:
         raise CenikError(f'Rozměr {sirka}×{vyska} mm je mimo rozsah ceníku pro {TYPES[typ][1]} '
                          f'(max {table["widths"][-1]}×{table["heights"][-1]} mm).')
+    override = CENIK.get('overrides', {}).get(typ)
+    if override:  # own price per m² of the actual area instead of the portal's grid (see the price list's note)
+        return _round2(override['cena_za_m2_bez_dph'] * sirka * vyska / 1e6)
     return table['grid'][j][i]
 
 

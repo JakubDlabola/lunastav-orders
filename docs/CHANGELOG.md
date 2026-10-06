@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-10-06] — Okna: cena vchodových dveří, plocha, záporné hodnoty
+- Vchodové dveře 1-křídlé za původní cenu dveří: 23 277,77 Kč/m² vč. DPH (20 783,72 Kč/m² bez DPH) podle skutečné plochy, všechny povrchy (900 × 2000 = 41 900 Kč); uloženo v `okna_cenik_2026.json` → `overrides`, rozsah rozměrů se dál kontroluje podle ceníku
+- Plocha výplně v m² v editoru (za kus i celkem) a u každé položky, pod seznamem celková plocha oken a dveří
+- Tlačítko přejmenováno na „Přidat okna / dveře s danými parametry"
+- Záporná čísla nelze zadat v žádném číselném poli formuláře (klávesa „−" blokovaná, vložená záporná hodnota se převede na kladnou); server záporné množství odmítne; vlastní položky s nulovým/záporným množstvím nebo cenou se nezapočítají do součtu
+
 ## [2026-10-06] — Příslušenství oken podle rozměru výplně
 - Délka parapetu se předvyplní šířkou výplně (v m), šířka a výška žaluzie a sítě rozměrem výplně; mění se s rozměrem výplně, dokud uživatel hodnotu sám nepřepíše
 

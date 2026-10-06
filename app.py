@@ -1057,6 +1057,14 @@ function checkSubmit() {{
   document.getElementById('submitBtn').disabled = missing.length > 0;
 }}
 
+// Number fields never take negative values (Typ práce, okna a dveře, Vlastní položky)
+document.getElementById('mainForm').addEventListener('keydown', function(e) {{
+  if (e.target.type === 'number' && (e.key === '-' || e.key === 'Subtract')) e.preventDefault();
+}});
+document.getElementById('mainForm').addEventListener('input', function(e) {{
+  const el = e.target;
+  if (el.type === 'number' && el.value !== '' && Number(el.value) < 0) el.value = String(Math.abs(Number(el.value)));
+}}, true);
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
 document.getElementById('mainForm').addEventListener('submit', function() {{
   oknaSerialize();
@@ -1448,6 +1456,16 @@ def _compute_order(call, f):
     extra_5000a, extra_5000b, extra_5000c = f['extra_5000a'], f['extra_5000b'], f['extra_5000c']
     eligible_roof, eligible_ceiling, eligible_sikminy = f['eligible_roof'], f['eligible_ceiling'], f['eligible_sikminy']
 
+    for label, value in (('plocha střechy', qty_m2_roof), ('plocha stropu', qty_m2_ceiling), ('plocha šikmin', qty_m2_sikminy),
+                         ('pochozí plocha', qty_5100), ('revizní lávka', qty_5101), ('tloušťka izolace', thickness_roof),
+                         ('tloušťka izolace', thickness_ceiling), ('tloušťka izolace', thickness_sikminy)):
+        try:
+            negative = float(value or 0) < 0
+        except (TypeError, ValueError):
+            negative = False
+        if negative:
+            raise HTTPException(status_code=400, detail=f'Záporná hodnota není dovolena: {label}.')
+
     TAX_RATE = 1.12
     LISTED = {'roof': 2002, 'ceiling': 751, 'windows': 8000}
     REF_MAP = {'thermofloc': '3000', 'supafil': '3100', 'strikana': '3200'}
@@ -1643,6 +1661,7 @@ def _compute_order(call, f):
     custom_total_incl = round(sum(
         float(item.get('qty') or 0) * float(item.get('price') or 0) * TAX_RATE
         for item in custom_items_list
+        if float(item.get('qty') or 0) > 0 and float(item.get('price') or 0) > 0
     ))
     okna_incl = round(okna_excl * TAX_RATE)
     total = eligible_roof + eligible_ceiling + eligible_sikminy + okna_incl + doprava_price + pochozi_total_incl + custom_total_incl

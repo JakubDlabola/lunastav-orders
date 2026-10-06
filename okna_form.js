@@ -27,6 +27,7 @@ let oknaDalsi = {};
 
 function oknaEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function oknaKc(n) { return new Intl.NumberFormat('cs-CZ').format(Math.round(n)) + ' Kč'; }
+function oknaM2(n) { return n.toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' m²'; }
 function oknaPoint(v, pts) { for (let i = 0; i < pts.length; i++) if (pts[i] >= v) return i; return -1; }
 
 function oknaVypln(povrch, typ, w, h) {
@@ -34,7 +35,9 @@ function oknaVypln(povrch, typ, w, h) {
   if (!t) throw new Error('Neznámý typ výplně.');
   const i = oknaPoint(w, t.widths), j = oknaPoint(h, t.heights);
   if (i < 0 || j < 0) throw new Error('Rozměr ' + w + '×' + h + ' mm je mimo rozsah ceníku (max ' + t.widths[t.widths.length - 1] + '×' + t.heights[t.heights.length - 1] + ' mm).');
-  return {cena: t.grid[j][i], bod: t.widths[i] + '×' + t.heights[j]};
+  const ov = (OKNA_CENIK.overrides || {})[typ];
+  if (ov) return {cena: oknaR2(ov.cena_za_m2_bez_dph * w * h / 1e6), bod: 'cena za m² skutečné plochy'};
+  return {cena: t.grid[j][i], bod: 'rozměr → ' + t.widths[i] + '×' + t.heights[j]};
 }
 function oknaParapetZaMetr(skupina, hloubka) {
   const t = OKNA_CENIK.accessories.parapet_pvc_interier, i = oknaPoint(hloubka, t.depths);
@@ -142,7 +145,9 @@ function oknaEditorChanged() {
     try {
       const v = oknaVypln(it.povrch, it.typ, it.sirka, it.vyska);
       priceEl.className = 'okna-price';
-      priceEl.innerHTML = 'Cena výplně <b>' + oknaKc(v.cena) + '</b> <small>/ ks bez DPH · rozměr → ' + v.bod + '</small>';
+      priceEl.innerHTML = 'Cena výplně <b>' + oknaKc(v.cena) + '</b> <small>/ ks bez DPH · ' + v.bod + '</small>' +
+        '<span class="okna-area">plocha <b>' + oknaM2(it.sirka * it.vyska / 1e6) + '</b> / ks' +
+        (it.ks > 1 ? ' · celkem <b>' + oknaM2(it.sirka * it.vyska / 1e6 * it.ks) + '</b>' : '') + '</span>';
     } catch (e) { priceEl.className = 'okna-price warn'; priceEl.textContent = '⚠ ' + e.message; }
   }
   [['parapet', () => it.parapet && Math.round(oknaParapetZaMetr(it.parapet.skupina, it.parapet.hloubka) * it.parapet.delkaM)],
@@ -177,7 +182,7 @@ function oknaResetEditor() {
   ['parapet', 'zaluzie', 'sit'].forEach(k => { document.getElementById('okna_' + k + '_on').checked = false; });
   set('okna_parapet_hloubka', '200'); set('okna_parapet_skupina', '1');
   oknaAccManual(null);
-  document.getElementById('okna-add-btn').textContent = '+ Přidat položku';
+  document.getElementById('okna-add-btn').textContent = 'Přidat okna / dveře s danými parametry';
   document.getElementById('okna-cancel-btn').classList.add('hidden');
   document.getElementById('okna-error').classList.add('hidden');
   oknaRenderTiles(); oknaRenderItems(); oknaRenderBasic(); oknaEditorChanged();
@@ -220,11 +225,13 @@ function oknaRenderItems() {
     try { total = oknaKc(oknaItemTotal(it)); } catch (e) { total = '⚠'; }
     return '<div class="okna-item' + (oknaEditIndex === i ? ' editing' : '') + '">' +
       '<button type="button" class="okna-item-main" onclick="oknaEditItem(' + i + ')">' +
-      '<b>' + it.ks + '× ' + t.label + ' ' + t.sub + '</b><small>' + OKNA_SURFACE_LABEL[it.povrch] + ' · ' + it.sirka + '×' + it.vyska + ' mm · ' + it.sklo +
+      '<b>' + it.ks + '× ' + t.label + ' ' + t.sub + '</b><small>' + OKNA_SURFACE_LABEL[it.povrch] + ' · ' + it.sirka + '×' + it.vyska + ' mm · ' +
+      oknaM2(it.sirka * it.vyska / 1e6 * it.ks) + ' · ' + it.sklo +
       (acc.length ? ' · ' + acc.join(', ') : '') + '</small></button>' +
       '<span class="okna-item-price">' + total + '</span>' +
       '<button type="button" class="okna-item-del" title="Odebrat" onclick="oknaRemoveItem(' + i + ')">×</button></div>';
-  }).join('');
+  }).join('') + '<div class="okna-area-total">Celková plocha oken a dveří: <b>' +
+    oknaM2(oknaItems.reduce((s, it) => s + it.sirka * it.vyska / 1e6 * it.ks, 0)) + '</b> <small>(dotace 8 000 Kč/m²)</small></div>';
 }
 
 function oknaRenderBasic() {

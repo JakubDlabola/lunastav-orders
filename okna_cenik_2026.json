@@ -4329,5 +4329,11 @@
    "cena": 200,
    "jednotka": "ks"
   }
- ]
+ ],
+ "overrides": {
+  "vd_jedno": {
+   "cena_za_m2_bez_dph": 20783.72,
+   "poznamka": "Vchodové dveře 1-křídlé za původní cenu dveří LUNASTAV (23 277,77 Kč/m² vč. DPH, dříve produkt 4100) podle skutečné plochy, pro všechny povrchy; ceník portálu se pro ně nepoužívá. Rozsah rozměrů se dál kontroluje podle ceníku."
+  }
+ }
 }
