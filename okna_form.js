@@ -113,7 +113,28 @@ function oknaRenderTiles() {
     '<span class="okna-swatch" style="background:' + s.swatch + '"></span><b>' + s.label + '</b><small>' + s.sub + '</small></button>').join('');
 }
 
+// Accessory sizes follow the window (parapet length = width, blinds/net = width × height)
+// until the user types their own value into the field.
+const OKNA_ACC_FIELDS = ['okna_parapet_delka', 'okna_zaluzie_sirka', 'okna_zaluzie_vyska', 'okna_sit_sirka', 'okna_sit_vyska'];
+function oknaSyncAccessories() {
+  const w = Number(document.getElementById('okna_sirka').value) || 0;
+  const h = Number(document.getElementById('okna_vyska').value) || 0;
+  const auto = {okna_parapet_delka: w ? String(Math.round(w / 10) / 100) : '',
+                okna_zaluzie_sirka: w || '', okna_zaluzie_vyska: h || '', okna_sit_sirka: w || '', okna_sit_vyska: h || ''};
+  OKNA_ACC_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el.dataset.manual !== '1') el.value = auto[id];
+  });
+}
+function oknaAccManual(on) {
+  OKNA_ACC_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (on && on(id)) el.dataset.manual = '1'; else delete el.dataset.manual;
+  });
+}
+
 function oknaEditorChanged() {
+  oknaSyncAccessories();
   const it = oknaEditorItem();
   const priceEl = document.getElementById('okna-price');
   if (!it.sirka || !it.vyska) { priceEl.className = 'okna-price'; priceEl.textContent = 'Zadejte rozměr'; }
@@ -154,8 +175,8 @@ function oknaResetEditor() {
   set('okna_sirka', '1200'); set('okna_vyska', '1500'); set('okna_ks', '1');
   document.querySelector('input[name=okna_sklo][value=trojsklo]').checked = true;
   ['parapet', 'zaluzie', 'sit'].forEach(k => { document.getElementById('okna_' + k + '_on').checked = false; });
-  set('okna_parapet_hloubka', '200'); set('okna_parapet_skupina', '1'); set('okna_parapet_delka', '');
-  ['zaluzie', 'sit'].forEach(k => { set('okna_' + k + '_sirka', ''); set('okna_' + k + '_vyska', ''); });
+  set('okna_parapet_hloubka', '200'); set('okna_parapet_skupina', '1');
+  oknaAccManual(null);
   document.getElementById('okna-add-btn').textContent = '+ Přidat položku';
   document.getElementById('okna-cancel-btn').classList.add('hidden');
   document.getElementById('okna-error').classList.add('hidden');
@@ -176,6 +197,8 @@ function oknaEditItem(i) {
     document.getElementById('okna_' + k + '_on').checked = !!it[k];
     set('okna_' + k + '_sirka', it[k] ? it[k].sirka : ''); set('okna_' + k + '_vyska', it[k] ? it[k].vyska : '');
   });
+  // keep the item's own accessory sizes; empty ones follow the window again
+  oknaAccManual(id => (id === 'okna_parapet_delka' ? !!it.parapet : !!it[id.split('_')[1]]));
   document.getElementById('okna-add-btn').textContent = '✓ Uložit změny položky';
   document.getElementById('okna-cancel-btn').classList.remove('hidden');
   oknaRenderTiles(); oknaRenderItems(); oknaEditorChanged();

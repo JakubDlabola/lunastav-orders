@@ -1,5 +1,8 @@
 # Changelog
 
+## [2026-10-06] — Příslušenství oken podle rozměru výplně
+- Délka parapetu se předvyplní šířkou výplně (v m), šířka a výška žaluzie a sítě rozměrem výplně; mění se s rozměrem výplně, dokud uživatel hodnotu sám nepřepíše
+
 ## [2026-10-06] — Nový dodatek z příležitosti
 - Tlačítko „Nový dodatek" na CZ příležitosti vedle „Nová objednávka" (skryté na SK příležitostech, archivovaných a bez objednávek)
 - Otevře formulář dodatku k objednávce se smlouvou (Objednávka odeslána / podepsána); má-li příležitost takových objednávek víc, nabídne výběr; bez takové objednávky zobrazí vysvětlení
