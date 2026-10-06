@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-10-06] — Nový dodatek z příležitosti
+- Tlačítko „Nový dodatek" na CZ příležitosti vedle „Nová objednávka" (skryté na SK příležitostech, archivovaných a bez objednávek)
+- Otevře formulář dodatku k objednávce se smlouvou (Objednávka odeslána / podepsána); má-li příležitost takových objednávek víc, nabídne výběr; bez takové objednávky zobrazí vysvětlení
+- Nový endpoint `GET /dodatek-form/from-lead?lead_id=`; v Odoo server action „Nový dodatek" + pohled „LUNASTAV: crm.lead form — Nový dodatek" (`setup_dodatek.py`)
+
 ## [2026-10-06] — Kalkulačka oken a dveří (ceník Úsporami 2026)
 - Sekce „Okna" a „Dveře" nahrazeny jednou sekcí **„Okna a dveře"** — kalkulačka převzatá z portálu Úsporami (Okna napřímo): typ výplně (okno 1/2/3-křídlé, balkónové dveře 1/2-křídlé, vchodové dveře 1/2-křídlé), povrch (bílá / dekor 1-stranný / dekor 2-stranný), šířka × výška, počet ks, sklo (informativní), příslušenství na položku (parapet vnitřní PVC, žaluzie, síť), seznam položek s úpravou/odebráním
 - Ceny z ceníku 2026 (`okna_cenik_2026.json`, bez DPH): rozměr se zaokrouhluje nahoru na nejbližší bod ceníku, mimo rozsah ceníku položku nelze přidat

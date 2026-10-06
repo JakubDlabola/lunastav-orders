@@ -8,6 +8,7 @@ Dodatek ke smlouvě o dílo (CZ) — Odoo side of the /dodatek-form flow in app.
      menu Prodej > Objednávky > Dodatky
   4. sale.order form: button "Dodatkový formulář" (orders with a contract sent or signed; the order
      form button 1338 from Studio view 4597 is relabelled "Objednávkový formulář") and a "Dodatky" tab
+  4b. crm.lead form: "Nový dodatek" next to "Nová objednávka" (CZ only) → /dodatek-form/from-lead
   5. sign e-mails: extension views on the CZ templates 1289/1291 — a dodatek row is shown instead of the
      contract text when the request is a dodatek; contracts and SK dodatky render exactly as before
   6. automations: signed dodatek → signed PDF + certificate on the order, client and opportunity, status
@@ -356,6 +357,32 @@ if model_id(D) and button_action:
                    'mode': 'extension', 'inherit_id': xmlid('sale', 'view_order_form'), 'priority': 400,
                    'arch_db': ORDER_FORM},
                   'view sale.order form Dodatek')
+
+# ── 4b. "Nový dodatek" on the CZ opportunity, next to "Nová objednávka" ──────
+# The service picks the opportunity's order with a contract (sent/signed) or lets the user choose.
+# Hidden on SK opportunities (company 2 has its own "Dodatok k ZoD"), archived ones and ones without orders.
+SK_COMPANY = 2
+LEAD_BUTTON_CODE = f"""action = {{
+    'type': 'ir.actions.act_url',
+    'url': '{RAILWAY_URL}/dodatek-form/from-lead?lead_id=%s&key={SERVICE_KEY}' % record.id,
+    'target': 'new',
+}}"""
+lead_model = model_id('crm.lead')
+lead_action = ensure_record('ir.actions.server', [('name', '=', 'Nový dodatek'), ('model_id', '=', lead_model)],
+                            {'name': 'Nový dodatek', 'model_id': lead_model, 'state': 'code', 'code': LEAD_BUTTON_CODE},
+                            'server action Nový dodatek (crm.lead)')
+if lead_action:
+    LEAD_FORM = f"""<data>
+  <xpath expr="//header/button[@name='action_sale_quotations_new']" position="after">
+    <button string="Nový dodatek" type="action" name="{lead_action}" class="oe_highlight" icon="fa-file-text-o"
+            invisible="company_id == {SK_COMPANY} or not active or not (quotation_count or sale_order_count)"/>
+  </xpath>
+</data>"""
+    ensure_record('ir.ui.view', [('name', '=', 'LUNASTAV: crm.lead form — Nový dodatek')],
+                  {'name': 'LUNASTAV: crm.lead form — Nový dodatek', 'model': 'crm.lead', 'type': 'form',
+                   'mode': 'extension', 'inherit_id': xmlid('crm', 'crm_lead_view_form'), 'priority': 450,
+                   'arch_db': LEAD_FORM},
+                  'view crm.lead form Nový dodatek')
 
 # ── 5. sign e-mails ──────────────────────────────────────────────────────────
 # record = sign.request.item; the dodatek row replaces the contract text row of the CZ table

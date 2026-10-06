@@ -2440,6 +2440,57 @@ def dodatek_form_get(order_id: int = Query(...), key: str = Query(...), test: in
     return _form_page(ctx)
 
 
+@app.get('/dodatek-form/from-lead', response_class=HTMLResponse)
+def dodatek_form_from_lead(lead_id: int = Query(...), key: str = Query(...), test: int = Query(0)):
+    """"Nový dodatek" on the opportunity: straight to the dodatek form of its order with a contract
+    (sent or signed); a choice when there are several."""
+    if key != SERVICE_KEY:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+    import html as _html
+    from urllib.parse import urlencode
+    call = _odoo_call()
+    orders = call('sale.order', 'search_read', [[('opportunity_id', '=', lead_id), ('state', 'in', ['sent', 'sale'])]],
+                  {'fields': ['name', 'state', 'partner_id', 'amount_total', 'date_order', 'x_cz_dodatek_ids'],
+                   'order': 'id desc'})
+    link = lambda oid: '/dodatek-form?' + urlencode({'order_id': oid, 'key': key, 'test': test})
+    if len(orders) == 1:
+        return RedirectResponse(link(orders[0]['id']), status_code=303)
+    if not orders:
+        return _message_html('Dodatek nelze vytvořit',
+                             'Příležitost nemá žádnou objednávku se smlouvou (stav Objednávka odeslána nebo '
+                             'Objednávka podepsána). Dodatek se vystavuje ke smlouvě, která už byla odeslána nebo podepsána.')
+    states = {'sent': ('Objednávka odeslána', '#7a3e8a'), 'sale': ('Objednávka podepsána', '#2a7a3e')}
+    rows = []
+    for o in orders:
+        label, color = states[o['state']]
+        dodatky = len(o.get('x_cz_dodatek_ids') or [])
+        rows.append(
+            f'<a class="row" href="{_html.escape(link(o["id"]))}">'
+            f'<span class="name">{_html.escape(o["name"])}</span>'
+            f'<span class="state" style="background:{color}">{label}</span>'
+            f'<span class="meta">{_html.escape((o["partner_id"] or [0, ""])[1])} · {_cz_date(str(o["date_order"])[:10])}'
+            f'{f" · dodatky: {dodatky}" if dodatky else ""}</span>'
+            f'<span class="amount">{o["amount_total"]:,.0f} Kč</span></a>'.replace(',', '\xa0'))
+    return f"""<!doctype html>
+<html lang="cs"><head><meta charset="utf-8"><title>Nový dodatek — výběr objednávky</title>
+<style>
+body{{font-family:Arial,sans-serif;background:#f5f5f5;color:#333;margin:0;padding:20px}}
+.card{{background:#fff;border-radius:8px;padding:28px;max-width:620px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+h2{{margin:0 0 6px;font-size:20px}} p{{color:#666;font-size:14px;margin:0 0 18px}}
+.row{{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center;padding:12px 14px;border:1px solid #e3e3e3;
+     border-radius:6px;margin-bottom:8px;text-decoration:none;color:#333}}
+.row:hover{{border-color:#c8a840;background:#fffbf0}}
+.name{{font-weight:bold;font-size:15px}} .state{{color:#fff;font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap}}
+.meta{{font-size:12px;color:#888}} .amount{{font-weight:bold;white-space:nowrap}}
+@media (max-width:520px){{.row{{grid-template-columns:1fr auto}} .meta{{grid-column:1/-1}}}}
+</style></head>
+<body><div class="card">
+  <h2>Nový dodatek</h2>
+  <p>Příležitost má více objednávek se smlouvou. Vyberte objednávku, ke které se dodatek vystaví.</p>
+  {''.join(rows)}
+</div></body></html>"""
+
+
 @app.post('/dodatek-form', response_class=HTMLResponse)
 async def dodatek_form_post(request: Request):
     raw = await request.form()
