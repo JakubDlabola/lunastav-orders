@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-10-12] — Volba s dotací / bez dotace při otevření formuláře
+- Po otevření objednávkového formuláře se nejdřív zobrazí okno „Zakázka s dotací?" s volbami **S dotací NZÚ** / **Bez dotace**
+- Zaškrtávátko „Zákazník čerpá dotaci NZÚ" nahrazeno řádkem se zvolenou možností a tlačítkem „Změnit" (znovu otevře volbu)
+- Pole „Zbývající dotace (Kč)" je u zakázky bez dotace skryté
+- Volba se neptá při návratu z náhledu (formulář si ji pamatuje) ani v dodatku (převezme se ze smlouvy); načtení šablony zvolenou možnost nemění
+
 ## [2026-10-06] — Okna: cena vchodových dveří, plocha, záporné hodnoty
 - Vchodové dveře 1-křídlé za původní cenu dveří: 23 277,77 Kč/m² vč. DPH (20 783,72 Kč/m² bez DPH) podle skutečné plochy, všechny povrchy (900 × 2000 = 41 900 Kč); uloženo v `okna_cenik_2026.json` → `overrides`, rozsah rozměrů se dál kontroluje podle ceníku
 - Plocha výplně v m² v editoru (za kus i celkem) a u každé položky, pod seznamem celková plocha oken a dveří

@@ -393,9 +393,30 @@ def _form_page(ctx):
     .edit-toggle-btn {{ font-size: 12px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; color: #666; cursor: pointer; white-space: nowrap; }}
     .edit-toggle-btn.active {{ background: #fff8e1; border-color: #c8a840; color: #7a5c00; }}
     textarea[readonly], input[type=text][readonly] {{ background: #f9f9f9; color: #555; cursor: default; }}
+    .grant-status {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: #f0f8f0; border: 1px solid #c8e6c9; border-radius: 6px; margin-top: 6px; font-size: 14px; }}
+    .grant-status.off {{ background: #f5f5f5; border-color: #ddd; }}
+    .grant-status button {{ font-size: 13px; padding: 4px 12px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }}
+    #grant-choice {{ position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 1000; }}
+    #grant-choice .gc-box {{ background: #fff; border-radius: 10px; padding: 28px 24px; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.25); }}
+    #grant-choice h2 {{ margin: 0 0 6px; font-size: 20px; }}
+    #grant-choice p {{ margin: 0 0 20px; color: #555; font-size: 14px; }}
+    #grant-choice .gc-btns {{ display: flex; gap: 12px; flex-wrap: wrap; }}
+    #grant-choice .gc-btns button {{ flex: 1 1 140px; padding: 14px 10px; font-size: 16px; font-weight: 600; border-radius: 6px; cursor: pointer; border: 2px solid #2a7a3e; }}
+    #grant-choice .gc-yes {{ background: #2a7a3e; color: #fff; }}
+    #grant-choice .gc-no {{ background: #fff; color: #2a7a3e; }}
   </style>
 </head>
 <body>
+<div id="grant-choice" class="hidden">
+  <div class="gc-box">
+    <h2>Zakázka s dotací?</h2>
+    <p>Čerpá zákazník dotaci NZÚ?</p>
+    <div class="gc-btns">
+      <button type="button" class="gc-yes" onclick="setGrantMode(true)">S dotací NZÚ</button>
+      <button type="button" class="gc-no" onclick="setGrantMode(false)">Bez dotace</button>
+    </div>
+  </div>
+</div>
 <div class="card">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px;">
     <div>
@@ -476,9 +497,10 @@ def _form_page(ctx):
           <input type="text" name="adresa_realizace" id="adresa_realizace" placeholder="Ulice, PSČ Město">
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f0f8f0;border:1px solid #c8e6c9;border-radius:6px;margin-top:6px;">
-        <input type="checkbox" id="grant_enabled" checked onchange="calc()" style="width:18px;height:18px;cursor:pointer;accent-color:#2a7a3e;">
-        <label for="grant_enabled" style="font-size:14px;cursor:pointer;font-weight:500;">Zákazník čerpá dotaci NZÚ</label>
+      <input type="checkbox" id="grant_enabled" checked onchange="calc()" class="hidden">
+      <div id="grant-status" class="grant-status">
+        <span id="grant-status-text"></span>
+        <button type="button" onclick="openGrantChoice()">Změnit</button>
       </div>
     </div>
 
@@ -548,8 +570,10 @@ def _form_page(ctx):
       + Přidat vlastní položku
     </button>
 
-    <span class="field-label">Zbývající dotace (Kč)</span>
-    <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1000" oninput="calc()" placeholder="bez omezení">
+    <div id="grant-remaining">
+      <span class="field-label">Zbývající dotace (Kč)</span>
+      <input type="number" id="remaining_grant_k" value="{remaining_grant_k}" min="0" step="1000" oninput="calc()" placeholder="bez omezení">
+    </div>
 
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
@@ -757,6 +781,22 @@ function updatePopisDila() {{
 
 function getRemK()  {{ const v = parseFloat(document.getElementById('remaining_grant_k').value); return isNaN(v) ? null : v; }}
 function hasGrant() {{ return document.getElementById('grant_enabled').checked; }}
+
+// With / without grant: chosen in a dialog when the order form opens (the old checkbox is hidden)
+function updateGrantStatus() {{
+  const on = hasGrant();
+  const st = document.getElementById('grant-status');
+  st.classList.toggle('off', !on);
+  document.getElementById('grant-status-text').innerHTML = on ? 'Zakázka <b>s dotací NZÚ</b>' : 'Zakázka <b>bez dotace</b>';
+  document.getElementById('grant-remaining').classList.toggle('hidden', !on);
+}}
+function setGrantMode(on) {{
+  document.getElementById('grant_enabled').checked = on;
+  document.getElementById('grant-choice').classList.add('hidden');
+  updateGrantStatus();
+  calc();
+}}
+function openGrantChoice() {{ document.getElementById('grant-choice').classList.remove('hidden'); }}
 function getSplit() {{ return document.querySelector('input[name=split]:checked')?.value; }}
 function fmt(n)     {{ return new Intl.NumberFormat('cs-CZ').format(Math.round(n)) + ' K\u010d'; }}
 
@@ -1142,8 +1182,9 @@ function prefillForm(d, templateMode) {{
       setVal('adresa_realizace', d.adresa_realizace);
     }}
   }}
-  if (d.grant_enabled === false) document.getElementById('grant_enabled').checked = false;
   if (!templateMode) {{
+    // a template keeps the with/without-grant choice made when the form opened
+    if (d.grant_enabled === false) document.getElementById('grant_enabled').checked = false;
     const grkEl = document.getElementById('remaining_grant_k');
     if (grkEl) grkEl.value = d.remaining_grant_k !== undefined ? d.remaining_grant_k : grkEl.value;
   }}
@@ -1174,7 +1215,13 @@ function prefillForm(d, templateMode) {{
   checkSubmit();
 }}
 oknaInit();
-(function() {{ prefillForm({draft_json}); }})();
+(function() {{
+  const draft = {draft_json};
+  prefillForm(draft);
+  updateGrantStatus();
+  // a new order asks first; a draft coming back from the preview and the dodatek already know
+  if (!draft && !IS_DODATEK) openGrantChoice();
+}})();
 
 const _historyKey = '{key}';
 function openHistoryOverlay() {{
