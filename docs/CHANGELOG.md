@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026-10-14] — Okna: přirážky, sleva za kombinaci s izolací, text v popisu díla
+- Všechny ceny oken a dveří (výplně, parapety, žaluzie, sítě, základní i další služby) jsou o 19 % vyšší než ceník Úsporami; výjimkou jsou vchodové dveře 1-křídlé (naše původní cena dveří) — `okna.MARKUP`
+- Za každou nezaškrtnutou základní službu (montáž, demontáž, likvidace, zednické zapravení) +5 % na výplně (okna, balkónové a vchodové dveře, i vchodové dveře 1-křídlé); příslušenství a služby beze změny — `okna.prirazka()`
+- Okna/dveře spolu se zateplením: sleva 5 000 Kč (cena izolace pod 1 500 Kč/m² vč. DPH) nebo 10 000 Kč (od 1 500 Kč/m²); rozhoduje efektivní cena za m² z náhledu, při více typech izolace ta nejvyšší; platí s dotací i bez ní
+- Sleva je zapracovaná do slevy % na řádcích oken (místo 3 % např. 4,23 %), takže je vidět ve „Slevě" ve smlouvě; protože Odoo ukládá slevu na 2 desetinná místa, sedí na pár korun (např. −4 990 Kč místo −5 000 Kč); v náhledu ceny vlastní řádek „sleva na okna a dveře za kombinaci s izolací"
+- Opraven popisek „Konstrukce pochozí plochy"
+- Popis díla: při oknech/dveřích věta „Cenová kalkulace na okna / dveře / okna a dveře je indikativní…"; popis se nově aktualizuje i po přidání/odebrání položky
+
+## [2026-10-14] — Pochozí plocha / revizní lávka: 12 m² zdarma místo slevy 12 %
+- Zrušena pevná sleva 12 %: pochozí plocha 750 Kč/m² vč. DPH, revizní lávka 468,75 Kč/m vč. DPH (1 m = 0,625 m²)
+- Při zateplení foukanou izolací (Thermofloc, Supafil; střecha + strop + šikminy dohromady) od 100 m² je prvních 12 m² pochozí plochy / lávky zdarma (nejdřív pochozí plocha, pak lávka); stříkaná izolace se do 100 m² nepočítá
+- Zdarma část je v objednávce i smlouvě samostatný řádek se slevou 100 % („… – zdarma (zateplení foukanou izolací od 100 m²)"); v náhledu ceny „(12 m² zdarma)" u pochozí plochy / lávky
+- Dodatek / načtení ze zakázky sečte množství z obou řádků
+
 ## [2026-10-12] — Volba s dotací / bez dotace při otevření formuláře
 - Po otevření objednávkového formuláře se nejdřív zobrazí okno „Zakázka s dotací?" s volbami **S dotací NZÚ** / **Bez dotace**
 - Zaškrtávátko „Zákazník čerpá dotaci NZÚ" nahrazeno řádkem se zvolenou možností a tlačítkem „Změnit" (znovu otevře volbu)

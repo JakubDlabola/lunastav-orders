@@ -30,26 +30,34 @@ function oknaKc(n) { return new Intl.NumberFormat('cs-CZ').format(Math.round(n))
 function oknaM2(n) { return n.toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' m²'; }
 function oknaPoint(v, pts) { for (let i = 0; i < pts.length; i++) if (pts[i] >= v) return i; return -1; }
 
+// Our prices = price list + 19 % (not the overridden 1-wing entrance door); windows/doors + 5 % for every
+// unticked basic service. Same as okna.py.
+const OKNA_MARKUP = 1.19;
+function oknaPrirazka() { return 1 + 0.05 * OKNA_BASIC.filter(n => oknaBasic[n] && !oknaBasic[n].on).length; }
 function oknaVypln(povrch, typ, w, h) {
+  const f = oknaPrirazka();
   const t = (OKNA_CENIK.windows[povrch] || {})[typ];
   if (!t) throw new Error('Neznámý typ výplně.');
   const i = oknaPoint(w, t.widths), j = oknaPoint(h, t.heights);
   if (i < 0 || j < 0) throw new Error('Rozměr ' + w + '×' + h + ' mm je mimo rozsah ceníku (max ' + t.widths[t.widths.length - 1] + '×' + t.heights[t.heights.length - 1] + ' mm).');
   const ov = (OKNA_CENIK.overrides || {})[typ];
-  if (ov) return {cena: oknaR2(ov.cena_za_m2_bez_dph * w * h / 1e6), bod: 'cena za m² skutečné plochy'};
-  return {cena: t.grid[j][i], bod: 'rozměr → ' + t.widths[i] + '×' + t.heights[j]};
+  const bod = (ov ? 'cena za m² skutečné plochy' : 'rozměr → ' + t.widths[i] + '×' + t.heights[j]) +
+              (f > 1 ? ' · příplatek ' + Math.round((f - 1) * 100) + ' % (bez služeb)' : '');
+  if (ov) return {cena: oknaR2(ov.cena_za_m2_bez_dph * w * h / 1e6 * f), bod: bod};
+  return {cena: oknaR2(t.grid[j][i] * OKNA_MARKUP * f), bod: bod};
 }
 function oknaParapetZaMetr(skupina, hloubka) {
   const t = OKNA_CENIK.accessories.parapet_pvc_interier, i = oknaPoint(hloubka, t.depths);
   if (i < 0) throw new Error('Hloubka parapetu je nad rozsahem ceníku.');
-  return (skupina === 2 ? t.g2 : t.g1)[i];
+  return oknaR2((skupina === 2 ? t.g2 : t.g1)[i] * OKNA_MARKUP);
 }
 function oknaStineni(druh, w, h) {
   const t = OKNA_CENIK.accessories[druh], i = oknaPoint(w, t.widths), j = oknaPoint(h, t.heights);
   if (i < 0 || j < 0) throw new Error('Rozměr ' + w + '×' + h + ' mm je mimo rozsah ceníku (' + (druh === 'zaluzie' ? 'žaluzie' : 'síť') + ').');
-  return t.grid[j][i];
+  return oknaR2(t.grid[j][i] * OKNA_MARKUP);
 }
 function oknaWork(name) { return OKNA_CENIK.work.find(w => w.nazev === name); }
+function oknaWorkCena(name) { return oknaR2(oknaWork(name).cena * OKNA_MARKUP); }
 function oknaObvod() { return Math.round(10 * oknaItems.reduce((s, it) => s + 2 * (it.sirka + it.vyska) / 1000 * it.ks, 0)) / 10; }
 function oknaBasicQty(name) {
   const st = oknaBasic[name];
@@ -74,22 +82,35 @@ function oknaLines() {
     if (it.zaluzie) rows.push({price: oknaStineni('zaluzie', it.zaluzie.sirka, it.zaluzie.vyska), qty: it.ks});
     if (it.sit) rows.push({price: oknaStineni('site', it.sit.sirka, it.sit.vyska), qty: it.ks});
   });
-  OKNA_BASIC.forEach(n => { const q = oknaBasicQty(n); if (q > 0) rows.push({price: oknaWork(n).cena, qty: q}); });
-  Object.entries(oknaDalsi).forEach(([n, q]) => { const w = oknaWork(n); if (w && q > 0) rows.push({price: w.cena, qty: q}); });
+  OKNA_BASIC.forEach(n => { const q = oknaBasicQty(n); if (q > 0) rows.push({price: oknaWorkCena(n), qty: q}); });
+  Object.entries(oknaDalsi).forEach(([n, q]) => { const w = oknaWork(n); if (w && q > 0) rows.push({price: oknaWorkCena(n), qty: q}); });
   return rows;
 }
 function oknaR2(x) { return Math.round((x + (x >= 0 ? 1e-9 : -1e-9)) * 100) / 100; }
 
-// Totals without VAT (exactly as Odoo will compute the lines: unit price / 0.97, 3 % off, rounded per line),
-// area (m²) for the grant, and whether there are windows / doors.
-function oknaTotals() {
+// Windows/doors with insulation: 5 000 / 10 000 Kč incl. VAT off by the insulation's price per m² incl. VAT
+// (the highest rate; from 1 500 Kč/m² → 10 000), baked into the lines' discount %. Same as okna.py.
+function oknaKombinaceSleva(rates) {
+  rates = rates.filter(r => r > 0);
+  if (!rates.length) return 0;
+  return Math.max.apply(null, rates) >= 1500 ? 10000 : 5000;
+}
+// Totals without VAT (exactly as Odoo will compute the lines: unit price / 0.97, discount, rounded per line),
+// area (m²) for the grant, and whether there are windows / doors. slevaIncl: the combination discount incl. VAT.
+function oknaTotals(slevaIncl) {
   let area = 0, hasDoors = false, hasWindows = false;
   oknaItems.forEach(it => {
     area += it.sirka * it.vyska / 1e6 * it.ks;
     if (OKNA_TYPES.find(t => t.value === it.typ).door) hasDoors = true; else hasWindows = true;
   });
-  const excl = oknaR2(oknaLines().reduce((s, r) => s + oknaR2(oknaR2(r.price / 0.97) * 0.97 * r.qty), 0));
-  return {excl: excl, area: area, count: oknaItems.length, hasDoors: hasDoors, hasWindows: hasWindows};
+  const rows = oknaLines();
+  const sum = disc => oknaR2(rows.reduce((s, r) => s + oknaR2(oknaR2(r.price / 0.97) * (1 - disc / 100) * r.qty), 0));
+  let disc = 3;
+  if (slevaIncl) {
+    const base = rows.reduce((s, r) => s + oknaR2(r.price / 0.97) * r.qty, 0);
+    if (base > 0) disc = Math.min(100, oknaR2(100 * (1 - Math.max(0, sum(3) - slevaIncl / 1.12) / base)));
+  }
+  return {excl: sum(disc), disc: disc, area: area, count: oknaItems.length, hasDoors: hasDoors, hasWindows: hasWindows};
 }
 
 function oknaEditorItem() {
@@ -171,6 +192,7 @@ function oknaAddItem() {
   try { oknaItemTotal(it); } catch (e) { return fail(e.message); }
   if (oknaEditIndex === null) oknaItems.push(it); else oknaItems[oknaEditIndex] = it;
   oknaResetEditor();
+  if (typeof updatePopisDila === 'function') updatePopisDila();
 }
 
 function oknaResetEditor() {
@@ -212,6 +234,7 @@ function oknaEditItem(i) {
 function oknaRemoveItem(i) {
   oknaItems.splice(i, 1);
   if (oknaEditIndex === i) oknaResetEditor(); else { if (oknaEditIndex !== null && oknaEditIndex > i) oknaEditIndex--; oknaRenderItems(); oknaRenderBasic(); if (typeof calc === 'function') calc(); }
+  if (typeof updatePopisDila === 'function') updatePopisDila();
 }
 
 function oknaRenderItems() {
@@ -239,11 +262,11 @@ function oknaRenderBasic() {
   document.getElementById('okna-basic').innerHTML = OKNA_BASIC.map((n, i) => {
     const st = oknaBasic[n], q = oknaBasicQty(n), w = oknaWork(n);
     return '<div class="okna-work' + (st.on ? ' on' : '') + '">' +
-      '<label><input type="checkbox" ' + (st.on ? 'checked' : '') + ' onchange="oknaBasic[OKNA_BASIC[' + i + ']].on=this.checked;oknaRenderBasic();calc()"> ' + oknaEsc(n) + '</label>' +
+      '<label><input type="checkbox" ' + (st.on ? 'checked' : '') + ' onchange="oknaBasic[OKNA_BASIC[' + i + ']].on=this.checked;oknaRenderBasic();oknaRenderItems();oknaEditorChanged()"> ' + oknaEsc(n) + '</label>' +
       (st.on ? '<span class="okna-work-qty"><input type="number" min="0" step="0.1" value="' + (st.manual !== null ? oknaEsc(st.manual) : q) + '"' +
         ' onchange="oknaBasic[OKNA_BASIC[' + i + ']].manual=this.value;oknaRenderBasic();calc()"> bm' +
         (st.manual !== null ? ' <button type="button" onclick="oknaBasic[OKNA_BASIC[' + i + ']].manual=null;oknaRenderBasic();calc()">auto</button>' : '') +
-        ' <b>' + (q > 0 ? oknaKc(Math.round(w.cena * q)) : '—') + '</b></span>' : '') + '</div>';
+        ' <b>' + (q > 0 ? oknaKc(Math.round(oknaWorkCena(n) * q)) : '—') + '</b></span>' : '') + '</div>';
   }).join('');
 }
 
@@ -259,7 +282,7 @@ function oknaRenderDalsi() {
     .filter(w => !OKNA_BASIC.includes(w.nazev) && (!q || w.nazev.toLowerCase().includes(q)))
     .map(w => {
       const idx = OKNA_CENIK.work.indexOf(w);
-      return '<div class="okna-dalsi-row"><span>' + oknaEsc(w.nazev) + ' <small>' + w.cena + ' Kč/' + oknaEsc(w.jednotka) + '</small></span>' +
+      return '<div class="okna-dalsi-row"><span>' + oknaEsc(w.nazev) + ' <small>' + oknaWorkCena(w.nazev) + ' Kč/' + oknaEsc(w.jednotka) + '</small></span>' +
         '<input type="number" min="0" step="0.1" value="' + (oknaDalsi[w.nazev] || 0) + '"' +
         ' onchange="oknaSetDalsi(' + idx + ',this.value)"><small>' + oknaEsc(w.jednotka) + '</small></div>';
     }).join('');

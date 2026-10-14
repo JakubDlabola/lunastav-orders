@@ -35,6 +35,13 @@ OKNA_JS = open(os.path.join(_HERE, 'okna_form.js'), encoding='utf-8').read()
 OKNA_CENIK_JSON = __import__('json').dumps(okna.CENIK, ensure_ascii=True, separators=(',', ':'))
 OKNA_UOM_IDS = {'Ks': 1, 'm': 9, 'm²': 11, 'km': 10}
 
+# Pochozí plocha / revizní lávka (ceiling add-ons), see _compute_order
+POCHOZI_M2_INCL = 750         # Kč per m² incl. VAT
+POCHOZI_LAVKA_M2 = 0.625      # 1 m of lávka counts as 0.625 m²
+POCHOZI_FREE_M2 = 12          # free m² ...
+POCHOZI_FREE_FROM_M2 = 100    # ... from this much blown insulation (roof + ceiling + šikminy)
+BLOWN_MATERIALS = {'thermofloc', 'supafil'}  # foukaná izolace (not 'strikana')
+
 _drafts: dict = {}  # token -> draft data for preview/confirm flow
 
 import os as _os, threading as _threading
@@ -542,7 +549,7 @@ def _form_page(ctx):
       <input type="number" name="thickness_ceiling" id="thickness_ceiling" min="1" step="1" value="25" oninput="updatePopisDila()">
       <span class="field-label">Plocha stropu (m²)</span>
       <input type="number" name="qty_m2_ceiling" id="qty_m2_ceiling" value="{zastavena_plocha}" min="1" step="1" oninput="calc(); updatePopisDila()">
-      <span class="field-label">Kostrukce pochozí plochy (m²)</span>
+      <span class="field-label">Konstrukce pochozí plochy (m²)</span>
       <input type="number" name="qty_5100" id="qty_5100" min="0" step="1" placeholder="nezahrnout" oninput="calc(); updatePopisDila()">
       <span class="field-label">Konstrukce revizní lávky (m)</span>
       <input type="number" name="qty_5101" id="qty_5101" min="0" step="1" placeholder="nezahrnout" oninput="calc(); updatePopisDila()">
@@ -578,6 +585,7 @@ def _form_page(ctx):
     <div id="preview" class="preview hidden">
       <div class="preview-row"><span>Cena bez slevy</span><span id="pv-base">—</span></div>
       <div class="preview-row sub hidden" id="pv-windows-row"><span>z toho okna a dveře celkem</span><span id="pv-windows">—</span></div>
+      <div class="preview-row sub hidden" id="pv-komb-row"><span>sleva na okna a dveře za kombinaci s izolací</span><span id="pv-komb">—</span></div>
       <div class="preview-row hidden" id="pv-rate-roof-row"><span>Efektivní cena / m² — Střecha</span><span id="pv-rate-roof">—</span></div>
       <div class="preview-row hidden" id="pv-rate-ceil-row"><span>Efektivní cena / m² — Strop</span><span id="pv-rate-ceil">—</span></div>
       <div class="preview-row hidden" id="pv-rate-sikminy-row"><span>Efektivní cena / m² — Šikminy</span><span id="pv-rate-sikminy">—</span></div>
@@ -775,6 +783,11 @@ function updatePopisDila() {{
     }}
   }}
 
+  if (hasWinSec) {{
+    const co = hasWin && hasDoors ? 'okna a dveře' : hasDoors ? 'dveře' : 'okna';
+    lines.push('Cenová kalkulace na ' + co + ' je indikativní a může se lišit v závislosti na konkrétních požadavcích objednatele, které budou upřesněny při finálním zaměření před zadáním oken do výroby.');
+  }}
+
   const body = lines.slice(1).join(' ');
   document.getElementById('popis_dila').value = lines[0] + (body ? '\\n' + body : '');
 }}
@@ -951,8 +964,17 @@ function calc() {{
     eSimkiny = Math.min(eSimkiny, lSimkiny);
   }}
 
-  // eWin = listed price always; grant reduces clientPays directly via grantReceived
-  const eWin   = lWin;
+  // eWin = listed price; grant reduces clientPays directly via grantReceived. Combined with insulation,
+  // the windows get 5 000 / 10 000 Kč off (by the insulation's price per m² incl. VAT), as on the server.
+  const insRates = [hasRoof && qRoof > 0 ? Math.round(eRoof) / qRoof : 0, hasCeil && qCeil > 0 ? Math.round(eCeil) / qCeil : 0,
+                    hasSikminy && qSimkiny > 0 ? Math.round(eSimkiny) / qSimkiny : 0];
+  let eWin = lWin;
+  if (hasWin && lWin > 0) {{
+    const kombSleva = oknaKombinaceSleva(insRates);
+    if (kombSleva) {{ try {{ eWin = Math.round(oknaTotals(kombSleva).excl * 1.12); }} catch (e) {{}} }}
+  }}
+  document.getElementById('pv-komb').textContent = '− ' + fmt(lWin - eWin);
+  document.getElementById('pv-komb-row').classList.toggle('hidden', eWin === lWin);
   const eTotal = eRoof + eCeil + eSimkiny + eWin;
   const grantUsed  = Math.min(grantReceived, eTotal);
   const clientPays = Math.max(DOPRAVA, eTotal + DOPRAVA - grantReceived);
@@ -968,9 +990,15 @@ function calc() {{
 
   const q5100 = hasCeil ? (parseFloat(document.getElementById('qty_5100').value) || 0) : 0;
   const q5101 = hasCeil ? (parseFloat(document.getElementById('qty_5101').value) || 0) : 0;
+  // 750 Kč/m² incl. VAT (lávka 1 m = 0.625 m²); from 100 m² of blown insulation the first 12 m² are free (as on the server)
   const pochoziEff = q5100 + q5101 * 0.625;
-  const pochoziPrice = Math.round(pochoziEff * 750 * 0.88);
-  document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice);
+  const blownMat = k => ['thermofloc', 'supafil'].includes(document.querySelector('input[name=material_' + k + ']:checked')?.value);
+  const blownM2 = (hasRoof && blownMat('roof') ? qRoof : 0) + (hasCeil && blownMat('ceiling') ? qCeil : 0) +
+                  (hasSikminy && blownMat('sikminy') ? qSimkiny : 0);
+  const pochoziFree = blownM2 >= 100 ? Math.min(12, pochoziEff) : 0;
+  const pochoziPrice = Math.round((pochoziEff - pochoziFree) * 750);
+  document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice) +
+    (pochoziFree > 0 ? ' (' + String(Math.round(pochoziFree * 100) / 100).replace('.', ',') + ' m² zdarma)' : '');
   document.getElementById('pv-pochozi-row').classList.toggle('hidden', !hasCeil || (q5100 === 0 && q5101 === 0));
 
   let customTotal = 0;
@@ -1615,7 +1643,12 @@ def _compute_order(call, f):
             okna_list = okna.normalize_items(_jsonw.loads(okna_items or '[]'))
             okna_work = _jsonw.loads(okna_prace) if okna_prace else None
             okna_rows = okna.lines(okna_list, okna_work)
-            okna_excl = okna.total_without_vat(okna_rows)
+            # combined with insulation: 5 000 / 10 000 Kč off by the insulation's price per m² incl. VAT
+            ins_rates = [elig / float(q) for on, elig, q in (
+                (has_roof, eligible_roof, qty_m2_roof), (has_ceiling, eligible_ceiling, qty_m2_ceiling),
+                (has_sikminy, eligible_sikminy, qty_m2_sikminy)) if on and float(q or 0) > 0]
+            okna_disc = okna.discount_for(okna_rows, okna.kombinace_sleva(ins_rates), TAX_RATE)
+            okna_excl = okna.total_without_vat(okna_rows, okna_disc)
         except (okna.CenikError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=f'Okna a dveře: {exc}')
         if not okna_list:
@@ -1633,7 +1666,7 @@ def _compute_order(call, f):
                 'product_uom_qty': r['qty'],
                 'product_uom_id': OKNA_UOM_IDS[r['unit']],
                 'price_unit': okna.unit_price(r['price']),
-                'discount': okna.COSMETIC_DISC,
+                'discount': okna_disc,
             }))
 
     if doprava_prods:
@@ -1644,11 +1677,19 @@ def _compute_order(call, f):
             'discount': 0,
         }))
 
-    # Pochozí plocha / lávka pricing (ceiling add-ons)
-    qty_5100_f = float(qty_5100 or 0)
-    qty_5101_f = float(qty_5101 or 0)
-    pochozi_eff_m2 = (qty_5100_f + qty_5101_f * 0.625) if has_ceiling else 0.0
-    pochozi_total_incl = round(pochozi_eff_m2 * 750 * 0.88)
+    # Pochozí plocha / lávka (ceiling add-ons): 750 Kč/m² incl. VAT, lávka 1 m = 0.625 m². With at least
+    # 100 m² of blown insulation (roof + ceiling + šikminy, Thermofloc / Supafil) the first 12 m² are free
+    # (pochozí plocha first, then lávka).
+    qty_5100_f = float(qty_5100 or 0) if has_ceiling else 0.0
+    qty_5101_f = float(qty_5101 or 0) if has_ceiling else 0.0
+    pochozi_eff_m2 = qty_5100_f + qty_5101_f * POCHOZI_LAVKA_M2
+    blown_m2 = sum(float(q or 0) for on, mat, q in (
+        (has_roof, material_roof, qty_m2_roof), (has_ceiling, material_ceiling, qty_m2_ceiling),
+        (has_sikminy, material_sikminy, qty_m2_sikminy)) if on and mat in BLOWN_MATERIALS)
+    free_m2 = min(POCHOZI_FREE_M2, pochozi_eff_m2) if blown_m2 >= POCHOZI_FREE_FROM_M2 else 0.0
+    free_5100 = min(free_m2, qty_5100_f)
+    free_5101 = round((free_m2 - free_5100) / POCHOZI_LAVKA_M2, 2)
+    pochozi_total_incl = round((pochozi_eff_m2 - free_m2) * POCHOZI_M2_INCL)
 
     # Extra add-on products (no grant/discount involvement)
     extra_needed = []
@@ -1660,7 +1701,7 @@ def _compute_order(call, f):
     if extra_needed:
         extra_prods = call('product.product', 'search_read',
                            [[['default_code', 'in', extra_needed]]],
-                           {'fields': ['id', 'default_code', 'lst_price'], 'limit': 10})
+                           {'fields': ['id', 'default_code', 'lst_price', 'display_name'], 'limit': 10})
         extra_map = {p['default_code']: p for p in extra_prods}
         for code in ['5000A', '5000B', '5000C']:
             if code in extra_map:
@@ -1670,13 +1711,25 @@ def _compute_order(call, f):
                     'price_unit': extra_map[code].get('lst_price', 0),
                     'discount': 0,
                 }))
-        for code, qty_f, conv in [('5100', qty_5100_f, 1.0), ('5101', qty_5101_f, 0.625)]:
-            if code in extra_map and qty_f > 0:
+        for code, qty_f, free_f, conv in [('5100', qty_5100_f, free_5100, 1.0),
+                                          ('5101', qty_5101_f, free_5101, POCHOZI_LAVKA_M2)]:
+            if code not in extra_map or qty_f <= 0:
+                continue
+            price_unit = round(POCHOZI_M2_INCL * conv / TAX_RATE, 2)
+            if free_f > 0:  # the free part: its own line at 100 % discount
                 order_lines.append((0, 0, {
                     'product_id': extra_map[code]['id'],
-                    'product_uom_qty': qty_f,
-                    'price_unit': round(750 * conv / TAX_RATE, 2),
-                    'discount': 12,
+                    'name': f"{extra_map[code]['display_name']} – zdarma (zateplení foukanou izolací od 100 m²)",
+                    'product_uom_qty': free_f,
+                    'price_unit': price_unit,
+                    'discount': 100,
+                }))
+            if qty_f - free_f > 0:
+                order_lines.append((0, 0, {
+                    'product_id': extra_map[code]['id'],
+                    'product_uom_qty': round(qty_f - free_f, 2),
+                    'price_unit': price_unit,
+                    'discount': 0,
                 }))
 
     import json as _json
@@ -2356,8 +2409,9 @@ def _form_from_order(call, order):
                 f[f'thickness_{kind}'] = th.group(1)
         elif code in okna.ALL_CODES or code in ('4100', '4000A', '4000B', '4000C', '4001A', '4001B'):
             f['has_windows'] = True  # windows/doors can't be rebuilt from lines: re-enter them in the calculator
-        elif code in ('5100', '5101'):
-            f[f'qty_{code}'] = q
+        elif code in ('5100', '5101'):  # free and paid part can be two lines
+            total = float(f.get(f'qty_{code}') or 0) + qty
+            f[f'qty_{code}'] = str(int(total)) if total == int(total) else str(round(total, 2))
         elif code in ('5000A', '5000B', '5000C'):
             f[f'extra_{code.lower()}'] = True
         elif code == 'XXX':

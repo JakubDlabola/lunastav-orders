@@ -45,8 +45,19 @@ def _point(value, points):
     return None
 
 
-def vypln(povrch, typ, sirka, vyska):
-    """Price of one window/door without VAT."""
+MARKUP = 1.19            # our price = price list + 19 % (not the overridden entrance door, which has our own price)
+PRIRAZKA_ZA_SLUZBU = 5.0  # + 5 % on windows/doors for every basic service the order leaves out
+
+
+def prirazka(prace):
+    """Factor on window/door units: 1 + 5 % per unticked basic service (montáž, demontáž, likvidace, zapravení)."""
+    basic = (prace or {}).get('basic') or {}
+    off = sum(1 for name in BASIC_WORK if not (basic.get(name) or {'on': True}).get('on'))
+    return 1 + PRIRAZKA_ZA_SLUZBU * off / 100
+
+
+def vypln(povrch, typ, sirka, vyska, factor=1.0):
+    """Price of one window/door without VAT (our price; `factor` = prirazka() of the order)."""
     table = CENIK['windows'].get(povrch, {}).get(typ)
     if not table:
         raise CenikError(f'Neznámý typ výplně {typ} / povrch {povrch}.')
@@ -56,8 +67,8 @@ def vypln(povrch, typ, sirka, vyska):
                          f'(max {table["widths"][-1]}×{table["heights"][-1]} mm).')
     override = CENIK.get('overrides', {}).get(typ)
     if override:  # own price per m² of the actual area instead of the portal's grid (see the price list's note)
-        return _round2(override['cena_za_m2_bez_dph'] * sirka * vyska / 1e6)
-    return table['grid'][j][i]
+        return _round2(override['cena_za_m2_bez_dph'] * sirka * vyska / 1e6 * factor)
+    return _round2(table['grid'][j][i] * MARKUP * factor)
 
 
 def parapet_za_metr(skupina, hloubka):
@@ -65,7 +76,7 @@ def parapet_za_metr(skupina, hloubka):
     i = _point(hloubka, table['depths'])
     if i is None:
         raise CenikError(f'Hloubka parapetu {hloubka} mm je nad rozsahem ceníku (max {table["depths"][-1]} mm).')
-    return (table['g1'] if skupina == 1 else table['g2'])[i]
+    return _round2((table['g1'] if skupina == 1 else table['g2'])[i] * MARKUP)
 
 
 def stineni(druh, sirka, vyska):
@@ -74,7 +85,12 @@ def stineni(druh, sirka, vyska):
     i, j = _point(sirka, table['widths']), _point(vyska, table['heights'])
     if i is None or j is None:
         raise CenikError(f'Rozměr {sirka}×{vyska} mm je mimo rozsah ceníku ({"žaluzie" if druh == "zaluzie" else "síť"}).')
-    return table['grid'][j][i]
+    return _round2(table['grid'][j][i] * MARKUP)
+
+
+def prace_cena(name):
+    """Price of a service per its unit without VAT (our price)."""
+    return _round2(WORK[name]['cena'] * MARKUP)
 
 
 def obvod_bm(items):
@@ -148,9 +164,10 @@ def lines(items, prace):
     """Order lines without VAT: [{code, name, qty, unit, price}] where price is per unit and qty × price is
     the calculator's amount. unit: 'Ks', 'm', 'm²', 'km' (Odoo UoM names)."""
     out = []
+    factor = prirazka(prace)
     for n, it in enumerate(items, start=1):
         code, label = TYPES[it['typ']]
-        price = vypln(it['povrch'], it['typ'], it['sirka'], it['vyska'])
+        price = vypln(it['povrch'], it['typ'], it['sirka'], it['vyska'], factor)
         out.append({'code': code, 'unit': 'Ks', 'qty': it['ks'], 'price': price,
                     'name': f'{label}, {SURFACES[it["povrch"]]}, {it["sirka"]} × {it["vyska"]} mm, {it["sklo"]}'})
         ref = f' (k pol. {n})' if len(items) > 1 else ''
@@ -172,7 +189,7 @@ def lines(items, prace):
         unit = unit_map.get(w['jednotka'], 'Ks')
         label = name if unit != 'Ks' or w['jednotka'] == 'ks' else f'{name} ({w["jednotka"]})'
         out.append({'code': BASIC_WORK.get(name, CODE_OTHER_WORK), 'unit': unit, 'qty': qty,
-                    'price': w['cena'], 'name': label})
+                    'price': prace_cena(name), 'name': label})
     return out
 
 
@@ -190,6 +207,32 @@ def unit_price(price):
     return _round2(price / (1 - COSMETIC_DISC / 100))
 
 
-def total_without_vat(rows):
-    """Sum of the lines' subtotals exactly as Odoo computes them (rounded unit price, 3 % off, rounded line)."""
-    return _round2(sum(_round2(unit_price(r['price']) * (1 - COSMETIC_DISC / 100) * r['qty']) for r in rows))
+def total_without_vat(rows, discount=COSMETIC_DISC):
+    """Sum of the lines' subtotals exactly as Odoo computes them (rounded unit price, discount, rounded line)."""
+    return _round2(sum(_round2(unit_price(r['price']) * (1 - discount / 100) * r['qty']) for r in rows))
+
+
+# Windows/doors together with insulation: a discount by the insulation's price per m² incl. VAT
+# (the highest of roof / ceiling / šikminy), baked into the window lines' discount %
+KOMBINACE_HRANICE = 1500  # Kč/m² incl. VAT: below → 5 000 Kč, from this rate → 10 000 Kč
+KOMBINACE_SLEVA = (5000, 10000)
+
+
+def kombinace_sleva(rates):
+    """Discount incl. VAT for the insulation rates (Kč/m² incl. VAT of the insulation types in the order)."""
+    rates = [r for r in rates if r > 0]
+    if not rates:
+        return 0
+    return KOMBINACE_SLEVA[1] if max(rates) >= KOMBINACE_HRANICE else KOMBINACE_SLEVA[0]
+
+
+def discount_for(rows, sleva_incl, vat=1.12):
+    """Discount % (2 decimals, as Odoo stores it) for all window lines: the 3 % plus `sleva_incl` (incl. VAT).
+    Approximate: the total drops by sleva_incl within a few Kč."""
+    if not sleva_incl:
+        return COSMETIC_DISC
+    base = sum(unit_price(r['price']) * r['qty'] for r in rows)
+    if base <= 0:
+        return COSMETIC_DISC
+    target = total_without_vat(rows) - sleva_incl / vat
+    return min(100.0, _round2(100 * (1 - max(0.0, target) / base)))
