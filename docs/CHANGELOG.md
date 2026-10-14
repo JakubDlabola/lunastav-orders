@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-10-15] — Bez příplatku za služby; pochozí plocha zdarma podle plochy izolace
+- Zrušen příplatek +5 % na výplně za nezaškrtnuté základní služby (ceny oken zůstávají +19 %)
+- Pochozí plocha / lávka zdarma úměrně ploše foukané izolace (střecha + strop + šikminy, Thermofloc / Supafil): pod 50 m² nic, 50 m² → 4 m² zdarma, lineárně až 100 m² a víc → 12 m² zdarma (např. 75 m² → 8 m²); `pochozi_free_m2()`
+- Řádek zdarma v objednávce: „… – zdarma (k zateplení foukanou izolací)"
+- Cena pochozí plochy / lávky v náhledu počítána z množství na řádcích (lávka zdarma zaokrouhlená na 0,01 m), aby seděla s Odoo
+
 ## [2026-10-14] — Okna: přirážky, sleva za kombinaci s izolací, text v popisu díla
 - Všechny ceny oken a dveří (výplně, parapety, žaluzie, sítě, základní i další služby) jsou o 19 % vyšší než ceník Úsporami; výjimkou jsou vchodové dveře 1-křídlé (naše původní cena dveří) — `okna.MARKUP`
 - Za každou nezaškrtnutou základní službu (montáž, demontáž, likvidace, zednické zapravení) +5 % na výplně (okna, balkónové a vchodové dveře, i vchodové dveře 1-křídlé); příslušenství a služby beze změny — `okna.prirazka()`

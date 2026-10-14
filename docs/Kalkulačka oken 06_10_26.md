@@ -29,7 +29,6 @@ Délka parapetu a rozměry žaluzie a sítě se předvyplní podle rozměru výp
 ## Naše ceny a přirážky (od 14. 10. 2026)
 
 - Všechny ceny oken a dveří včetně příslušenství a služeb jsou **o 19 % vyšší** než ceník portálu. Výjimkou jsou **vchodové dveře 1-křídlé**, které mají dál naši původní cenu.
-- Za každou **nezaškrtnutou základní službu** (montáž, demontáž, likvidace, zednické zapravení) se výplně (okna a dveře) zdraží o **5 %**. Jedna vypnutá služba = +5 %, dvě = +10 % atd. Příplatek se ukáže u ceny výplně v editoru.
 - Pokud zakázka kromě oken a dveří obsahuje i **zateplení** (střecha, strop nebo šikminy), dostane zákazník slevu na okna a dveře:
   - **5 000 Kč**, když je cena izolace pod 1 500 Kč/m² vč. DPH,
   - **10 000 Kč**, když je cena izolace 1 500 Kč/m² vč. DPH nebo víc.

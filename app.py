@@ -38,9 +38,15 @@ OKNA_UOM_IDS = {'Ks': 1, 'm': 9, 'm²': 11, 'km': 10}
 # Pochozí plocha / revizní lávka (ceiling add-ons), see _compute_order
 POCHOZI_M2_INCL = 750         # Kč per m² incl. VAT
 POCHOZI_LAVKA_M2 = 0.625      # 1 m of lávka counts as 0.625 m²
-POCHOZI_FREE_M2 = 12          # free m² ...
-POCHOZI_FREE_FROM_M2 = 100    # ... from this much blown insulation (roof + ceiling + šikminy)
 BLOWN_MATERIALS = {'thermofloc', 'supafil'}  # foukaná izolace (not 'strikana')
+
+
+def pochozi_free_m2(blown_m2):
+    """Free m² of pochozí plocha / lávka: none below 50 m² of blown insulation, 4 m² at 50 m² rising linearly
+    to 12 m² at 100 m², then 12 m²."""
+    if blown_m2 < 50:
+        return 0.0
+    return round(min(12.0, 4 + (blown_m2 - 50) * 8 / 50), 2)
 
 _drafts: dict = {}  # token -> draft data for preview/confirm flow
 
@@ -990,13 +996,15 @@ function calc() {{
 
   const q5100 = hasCeil ? (parseFloat(document.getElementById('qty_5100').value) || 0) : 0;
   const q5101 = hasCeil ? (parseFloat(document.getElementById('qty_5101').value) || 0) : 0;
-  // 750 Kč/m² incl. VAT (lávka 1 m = 0.625 m²); from 100 m² of blown insulation the first 12 m² are free (as on the server)
+  // 750 Kč/m² incl. VAT (lávka 1 m = 0.625 m²); free part by the blown insulation area: 4 m² at 50 m² → 12 m² at 100 m² (as on the server)
   const pochoziEff = q5100 + q5101 * 0.625;
   const blownMat = k => ['thermofloc', 'supafil'].includes(document.querySelector('input[name=material_' + k + ']:checked')?.value);
   const blownM2 = (hasRoof && blownMat('roof') ? qRoof : 0) + (hasCeil && blownMat('ceiling') ? qCeil : 0) +
                   (hasSikminy && blownMat('sikminy') ? qSimkiny : 0);
-  const pochoziFree = blownM2 >= 100 ? Math.min(12, pochoziEff) : 0;
-  const pochoziPrice = Math.round((pochoziEff - pochoziFree) * 750);
+  const freeM2 = blownM2 < 50 ? 0 : Math.round(Math.min(12, 4 + (blownM2 - 50) * 8 / 50) * 100) / 100;
+  const pochoziFree = Math.min(freeM2, pochoziEff);
+  const free5100 = Math.min(pochoziFree, q5100), free5101 = Math.round((pochoziFree - free5100) / 0.625 * 100) / 100;
+  const pochoziPrice = Math.round(((q5100 - free5100) + (q5101 - free5101) * 0.625) * 750);
   document.getElementById('pv-pochozi').textContent = fmt(pochoziPrice) +
     (pochoziFree > 0 ? ' (' + String(Math.round(pochoziFree * 100) / 100).replace('.', ',') + ' m² zdarma)' : '');
   document.getElementById('pv-pochozi-row').classList.toggle('hidden', !hasCeil || (q5100 === 0 && q5101 === 0));
@@ -1677,19 +1685,20 @@ def _compute_order(call, f):
             'discount': 0,
         }))
 
-    # Pochozí plocha / lávka (ceiling add-ons): 750 Kč/m² incl. VAT, lávka 1 m = 0.625 m². With at least
-    # 100 m² of blown insulation (roof + ceiling + šikminy, Thermofloc / Supafil) the first 12 m² are free
-    # (pochozí plocha first, then lávka).
+    # Pochozí plocha / lávka (ceiling add-ons): 750 Kč/m² incl. VAT, lávka 1 m = 0.625 m². By the area of blown
+    # insulation (roof + ceiling + šikminy, Thermofloc / Supafil) part of it is free: 4 m² at 50 m² rising
+    # linearly to 12 m² at 100 m² and more (pochozí plocha first, then lávka).
     qty_5100_f = float(qty_5100 or 0) if has_ceiling else 0.0
     qty_5101_f = float(qty_5101 or 0) if has_ceiling else 0.0
     pochozi_eff_m2 = qty_5100_f + qty_5101_f * POCHOZI_LAVKA_M2
     blown_m2 = sum(float(q or 0) for on, mat, q in (
         (has_roof, material_roof, qty_m2_roof), (has_ceiling, material_ceiling, qty_m2_ceiling),
         (has_sikminy, material_sikminy, qty_m2_sikminy)) if on and mat in BLOWN_MATERIALS)
-    free_m2 = min(POCHOZI_FREE_M2, pochozi_eff_m2) if blown_m2 >= POCHOZI_FREE_FROM_M2 else 0.0
+    free_m2 = min(pochozi_free_m2(blown_m2), pochozi_eff_m2)
     free_5100 = min(free_m2, qty_5100_f)
     free_5101 = round((free_m2 - free_5100) / POCHOZI_LAVKA_M2, 2)
-    pochozi_total_incl = round((pochozi_eff_m2 - free_m2) * POCHOZI_M2_INCL)
+    # priced by the line quantities (free lávka rounded to 0.01 m), same as the form
+    pochozi_total_incl = round(((qty_5100_f - free_5100) + (qty_5101_f - free_5101) * POCHOZI_LAVKA_M2) * POCHOZI_M2_INCL)
 
     # Extra add-on products (no grant/discount involvement)
     extra_needed = []
@@ -1719,7 +1728,7 @@ def _compute_order(call, f):
             if free_f > 0:  # the free part: its own line at 100 % discount
                 order_lines.append((0, 0, {
                     'product_id': extra_map[code]['id'],
-                    'name': f"{extra_map[code]['display_name']} – zdarma (zateplení foukanou izolací od 100 m²)",
+                    'name': f"{extra_map[code]['display_name']} – zdarma (k zateplení foukanou izolací)",
                     'product_uom_qty': free_f,
                     'price_unit': price_unit,
                     'discount': 100,

@@ -45,19 +45,11 @@ def _point(value, points):
     return None
 
 
-MARKUP = 1.19            # our price = price list + 19 % (not the overridden entrance door, which has our own price)
-PRIRAZKA_ZA_SLUZBU = 5.0  # + 5 % on windows/doors for every basic service the order leaves out
+MARKUP = 1.19  # our price = price list + 19 % (not the overridden entrance door, which has our own price)
 
 
-def prirazka(prace):
-    """Factor on window/door units: 1 + 5 % per unticked basic service (montáž, demontáž, likvidace, zapravení)."""
-    basic = (prace or {}).get('basic') or {}
-    off = sum(1 for name in BASIC_WORK if not (basic.get(name) or {'on': True}).get('on'))
-    return 1 + PRIRAZKA_ZA_SLUZBU * off / 100
-
-
-def vypln(povrch, typ, sirka, vyska, factor=1.0):
-    """Price of one window/door without VAT (our price; `factor` = prirazka() of the order)."""
+def vypln(povrch, typ, sirka, vyska):
+    """Price of one window/door without VAT (our price)."""
     table = CENIK['windows'].get(povrch, {}).get(typ)
     if not table:
         raise CenikError(f'Neznámý typ výplně {typ} / povrch {povrch}.')
@@ -67,8 +59,8 @@ def vypln(povrch, typ, sirka, vyska, factor=1.0):
                          f'(max {table["widths"][-1]}×{table["heights"][-1]} mm).')
     override = CENIK.get('overrides', {}).get(typ)
     if override:  # own price per m² of the actual area instead of the portal's grid (see the price list's note)
-        return _round2(override['cena_za_m2_bez_dph'] * sirka * vyska / 1e6 * factor)
-    return _round2(table['grid'][j][i] * MARKUP * factor)
+        return _round2(override['cena_za_m2_bez_dph'] * sirka * vyska / 1e6)
+    return _round2(table['grid'][j][i] * MARKUP)
 
 
 def parapet_za_metr(skupina, hloubka):
@@ -164,10 +156,9 @@ def lines(items, prace):
     """Order lines without VAT: [{code, name, qty, unit, price}] where price is per unit and qty × price is
     the calculator's amount. unit: 'Ks', 'm', 'm²', 'km' (Odoo UoM names)."""
     out = []
-    factor = prirazka(prace)
     for n, it in enumerate(items, start=1):
         code, label = TYPES[it['typ']]
-        price = vypln(it['povrch'], it['typ'], it['sirka'], it['vyska'], factor)
+        price = vypln(it['povrch'], it['typ'], it['sirka'], it['vyska'])
         out.append({'code': code, 'unit': 'Ks', 'qty': it['ks'], 'price': price,
                     'name': f'{label}, {SURFACES[it["povrch"]]}, {it["sirka"]} × {it["vyska"]} mm, {it["sklo"]}'})
         ref = f' (k pol. {n})' if len(items) > 1 else ''

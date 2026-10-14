@@ -30,21 +30,16 @@ function oknaKc(n) { return new Intl.NumberFormat('cs-CZ').format(Math.round(n))
 function oknaM2(n) { return n.toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' m²'; }
 function oknaPoint(v, pts) { for (let i = 0; i < pts.length; i++) if (pts[i] >= v) return i; return -1; }
 
-// Our prices = price list + 19 % (not the overridden 1-wing entrance door); windows/doors + 5 % for every
-// unticked basic service. Same as okna.py.
+// Our prices = price list + 19 % (not the overridden 1-wing entrance door). Same as okna.py.
 const OKNA_MARKUP = 1.19;
-function oknaPrirazka() { return 1 + 0.05 * OKNA_BASIC.filter(n => oknaBasic[n] && !oknaBasic[n].on).length; }
 function oknaVypln(povrch, typ, w, h) {
-  const f = oknaPrirazka();
   const t = (OKNA_CENIK.windows[povrch] || {})[typ];
   if (!t) throw new Error('Neznámý typ výplně.');
   const i = oknaPoint(w, t.widths), j = oknaPoint(h, t.heights);
   if (i < 0 || j < 0) throw new Error('Rozměr ' + w + '×' + h + ' mm je mimo rozsah ceníku (max ' + t.widths[t.widths.length - 1] + '×' + t.heights[t.heights.length - 1] + ' mm).');
   const ov = (OKNA_CENIK.overrides || {})[typ];
-  const bod = (ov ? 'cena za m² skutečné plochy' : 'rozměr → ' + t.widths[i] + '×' + t.heights[j]) +
-              (f > 1 ? ' · příplatek ' + Math.round((f - 1) * 100) + ' % (bez služeb)' : '');
-  if (ov) return {cena: oknaR2(ov.cena_za_m2_bez_dph * w * h / 1e6 * f), bod: bod};
-  return {cena: oknaR2(t.grid[j][i] * OKNA_MARKUP * f), bod: bod};
+  if (ov) return {cena: oknaR2(ov.cena_za_m2_bez_dph * w * h / 1e6), bod: 'cena za m² skutečné plochy'};
+  return {cena: oknaR2(t.grid[j][i] * OKNA_MARKUP), bod: 'rozměr → ' + t.widths[i] + '×' + t.heights[j]};
 }
 function oknaParapetZaMetr(skupina, hloubka) {
   const t = OKNA_CENIK.accessories.parapet_pvc_interier, i = oknaPoint(hloubka, t.depths);
@@ -262,7 +257,7 @@ function oknaRenderBasic() {
   document.getElementById('okna-basic').innerHTML = OKNA_BASIC.map((n, i) => {
     const st = oknaBasic[n], q = oknaBasicQty(n), w = oknaWork(n);
     return '<div class="okna-work' + (st.on ? ' on' : '') + '">' +
-      '<label><input type="checkbox" ' + (st.on ? 'checked' : '') + ' onchange="oknaBasic[OKNA_BASIC[' + i + ']].on=this.checked;oknaRenderBasic();oknaRenderItems();oknaEditorChanged()"> ' + oknaEsc(n) + '</label>' +
+      '<label><input type="checkbox" ' + (st.on ? 'checked' : '') + ' onchange="oknaBasic[OKNA_BASIC[' + i + ']].on=this.checked;oknaRenderBasic();calc()"> ' + oknaEsc(n) + '</label>' +
       (st.on ? '<span class="okna-work-qty"><input type="number" min="0" step="0.1" value="' + (st.manual !== null ? oknaEsc(st.manual) : q) + '"' +
         ' onchange="oknaBasic[OKNA_BASIC[' + i + ']].manual=this.value;oknaRenderBasic();calc()"> bm' +
         (st.manual !== null ? ' <button type="button" onclick="oknaBasic[OKNA_BASIC[' + i + ']].manual=null;oknaRenderBasic();calc()">auto</button>' : '') +
