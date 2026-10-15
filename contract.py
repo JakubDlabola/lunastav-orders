@@ -479,6 +479,7 @@ def _fill(doc, order: dict, partner: dict, lines: list, extra_replacements=None)
         '{companyStreet}':        partner.get('street', '') or '',
         '{companyZipCode}':       partner.get('zip', '') or '',
         '{companyCity}':          partner.get('city', '') or '',
+        '{korespondencniAdresa}': order.get('x_korespondencni_adresa') or 'Shodná s trvalou adresou',
         '{companyEmail}':         partner.get('email', '') or '',
         '{companyTel1}':          partner.get('phone', '') or '',
         '{name}':                 _BOLD_ON + (lambda p: p.split('\n', 1)[0])(order.get('x_studio_popis_dila', '') or '') + _BOLD_OFF,

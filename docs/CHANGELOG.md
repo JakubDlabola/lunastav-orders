@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-10-16] — Korespondenční adresa
+- Formulář objednávky i dodatku: zaškrtávátko „Korespondenční adresa se shoduje s adresou trvalého bydliště" (výchozí zaškrtnuto); po odškrtnutí pole „Korespondenční adresa"; ukládá se do šablon a návratu z náhledu
+- Odoo: nové pole `x_korespondencni_adresa` (sale.order) v záložce Smlouva o dílo pod Adresou realizace — pohled „LUNASTAV: sale.order form — korespondenční adresa" (`setup_korespondencni_adresa.py`); formulář zapíše „Shodná s trvalou adresou" nebo zadanou adresu
+- Smlouva i dodatek: řádek „Korespondenční adresa: …" pod „Trvale bytem/Se sídlem" (šablony `Smlouva-LUNASTAV-vzor.docx`, `Dodatek-LUNASTAV-vzor.docx`); starší objednávky bez pole → „Shodná s trvalou adresou"; dodatek pole do objednávky nezapisuje
+
 ## [2026-10-15] — Bez příplatku za služby; pochozí plocha zdarma podle plochy izolace
 - Zrušen příplatek +5 % na výplně za nezaškrtnuté základní služby (ceny oken zůstávají +19 %)
 - Pochozí plocha / lávka zdarma úměrně ploše foukané izolace (střecha + strop + šikminy, Thermofloc / Supafil): pod 50 m² nic, 50 m² → 4 m² zdarma, lineárně až 100 m² a víc → 12 m² zdarma (např. 75 m² → 8 m²); `pochozi_free_m2()`

@@ -40,6 +40,14 @@ POCHOZI_M2_INCL = 750         # Kč per m² incl. VAT
 POCHOZI_LAVKA_M2 = 0.625      # 1 m of lávka counts as 0.625 m²
 BLOWN_MATERIALS = {'thermofloc', 'supafil'}  # foukaná izolace (not 'strikana')
 
+KOR_SAME_TEXT = 'Shodná s trvalou adresou'
+
+
+def kor_adresa_value(kor_same, korespondencni_adresa):
+    """Korespondenční adresa for the order / PDF: the box ticked (or nothing typed) → same as the permanent address."""
+    typed = (korespondencni_adresa or '').strip()
+    return typed if (not kor_same and typed) else KOR_SAME_TEXT
+
 
 def pochozi_free_m2(blown_m2):
     """Free m² of pochozí plocha / lávka: none below 50 m² of blown insulation, 4 m² at 50 m² rising linearly
@@ -277,7 +285,7 @@ def generate(order_id: int = Query(...), key: str = Query(...)):
 
     orders = call('sale.order', 'read', [[order_id]], {'fields': [
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
-        'x_studio_adresa_realizace', 'x_studio_popis_dila',
+        'x_studio_adresa_realizace', 'x_korespondencni_adresa', 'x_studio_popis_dila',
         'x_studio_zaloha_kc', 'x_studio_termin_zalohy_2',
         'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
@@ -497,6 +505,18 @@ def _form_page(ctx):
       <div>
         <label style="font-size:12px;color:#888;">Datum narození</label>
         <input type="text" name="client_dob" value="{partner_dob}" placeholder="DD.MM.RRRR">
+      </div>
+      <div style="margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="kor_same" name="kor_same" value="1" checked
+                 onchange="document.getElementById('kor-custom').classList.toggle('hidden',this.checked)"
+                 style="width:18px;height:18px;cursor:pointer;accent-color:#c8a840;">
+          <label for="kor_same" style="font-size:14px;cursor:pointer;">Korespondenční adresa se shoduje s adresou trvalého bydliště</label>
+        </div>
+        <div id="kor-custom" class="hidden" style="margin-top:8px;">
+          <span class="field-label">Korespondenční adresa</span>
+          <input type="text" name="korespondencni_adresa" id="korespondencni_adresa" placeholder="Ulice, PSČ Město">
+        </div>
       </div>
       <div{only_order} style="margin-top:4px;">
         <div style="display:flex;align-items:center;gap:10px;">
@@ -1217,6 +1237,11 @@ function prefillForm(d, templateMode) {{
       if (cb) {{ cb.checked = false; document.getElementById('addr-custom').classList.remove('hidden'); }}
       setVal('adresa_realizace', d.adresa_realizace);
     }}
+    if (d.kor_same === false) {{
+      document.getElementById('kor_same').checked = false;
+      document.getElementById('kor-custom').classList.remove('hidden');
+      setVal('korespondencni_adresa', d.korespondencni_adresa);
+    }}
   }}
   if (!templateMode) {{
     // a template keeps the with/without-grant choice made when the form opened
@@ -1450,6 +1475,8 @@ def order_form_post(
     qty_5101: str = Form(''),
     addr_same: str = Form(''),
     adresa_realizace: str = Form(''),
+    kor_same: str = Form(''),
+    korespondencni_adresa: str = Form(''),
     popis_dila: str = Form(''),
     thickness_roof: str = Form(''),
     thickness_ceiling: str = Form(''),
@@ -1510,6 +1537,7 @@ def order_form_post(
             termin_dokonceni_manual=termin_dokonceni_manual,
             popis_dila_manual=popis_dila_manual,
             stavebni_pripravenost_manual=stavebni_pripravenost_manual,
+            kor_same=kor_same, korespondencni_adresa=korespondencni_adresa,
         )
     except HTTPException:
         raise
@@ -1815,6 +1843,8 @@ def _order_form_post_inner(
     termin_dokonceni_manual='',
     popis_dila_manual='',
     stavebni_pripravenost_manual='',
+    kor_same='1',
+    korespondencni_adresa='',
 ):
     uid, models = odoo_connect()
 
@@ -1843,6 +1873,7 @@ def _order_form_post_inner(
         'x_studio_cena_po_odecteni_dotace': max(0, client_pays),
         'x_studio_float_field_45q_1jsh2tmcd': insul_area,
         'x_studio_adresa_realizace': addr_value,
+        'x_korespondencni_adresa': kor_adresa_value(kor_same, korespondencni_adresa),
         'x_studio_popis_dila': popis_dila or '',
         'x_studio_termin_dokonceni_2': termin_dokonceni or '',
         'x_studio_termin_zalohy_2': termin_zalohy_2 or '',
@@ -1853,7 +1884,7 @@ def _order_form_post_inner(
     # Generate contract PDF immediately after saving
     updated = call('sale.order', 'read', [[order_id]], {'fields': [
         'name', 'partner_id', 'amount_total', 'amount_untaxed', 'amount_tax', 'order_line',
-        'x_studio_adresa_realizace', 'x_studio_popis_dila', 'user_id', 'opportunity_id',
+        'x_studio_adresa_realizace', 'x_korespondencni_adresa', 'x_studio_popis_dila', 'user_id', 'opportunity_id',
         'x_studio_zaloha_kc', 'x_studio_termin_zalohy_2',
         'x_studio_doplatek_kc', 'x_studio_termin_dokonceni_2',
         'x_studio_stavebni_pripravenost', 'x_studio_datum_podpisu_smlouvy',
@@ -1950,6 +1981,7 @@ def _order_form_post_inner(
             'grant_enabled': grant_enabled_val not in ('', '0', 'false', 'False'),
             'remaining_grant_k': remaining_grant_k_val or '',
             'addr_same': bool(addr_same), 'adresa_realizace': adresa_realizace or '',
+            'kor_same': bool(kor_same), 'korespondencni_adresa': korespondencni_adresa or '',
             'popis_dila': popis_dila or '', 'stavebni_pripravenost': stavebni_pripravenost or '',
             'termin_dokonceni_manual': bool(termin_dokonceni_manual),
             'popis_dila_manual': bool(popis_dila_manual),
@@ -2273,7 +2305,8 @@ _CZK_ID = 9
 _CUSTOM_UOM = {1: 'ks', 9: 'm', 11: 'm2'}
 _DODATEK_ORDER_FIELDS = ['name', 'state', 'partner_id', 'opportunity_id', 'user_id', 'order_line',
                          'x_studio_datum_podpisu_smlouvy', 'x_studio_termin_zalohy_2',
-                         'x_studio_zaloha_kc', 'x_studio_doplatek_kc', 'x_studio_vyse_dotace_kc']
+                         'x_studio_zaloha_kc', 'x_studio_doplatek_kc', 'x_studio_vyse_dotace_kc',
+                         'x_korespondencni_adresa']
 # form fields as the order form posts them (FastAPI Form() defaults of order_form_post)
 _FORM_FLOATS = ('eligible_roof', 'eligible_ceiling', 'eligible_sikminy',
                 'discount_pct_roof', 'discount_pct_ceiling', 'grant_amount')
@@ -2283,7 +2316,8 @@ _FORM_STRS = ('has_roof', 'has_ceiling', 'has_windows', 'has_sikminy',
               'extra_5000a', 'extra_5000b', 'extra_5000c',
               'qty_5100', 'qty_5101', 'thickness_roof', 'thickness_ceiling', 'thickness_sikminy',
               'client_name', 'client_street', 'client_zip', 'client_city', 'client_email', 'client_phone',
-              'client_dob', 'grant_enabled_val', 'remaining_grant_k_val', 'smlouva_datum')
+              'client_dob', 'grant_enabled_val', 'remaining_grant_k_val', 'smlouva_datum',
+              'kor_same', 'korespondencni_adresa')
 
 
 def _odoo_call():
@@ -2435,6 +2469,9 @@ def _form_from_order(call, order):
         f['split'] = min(('80-20', '60-40', '20-80', '0-100'), key=lambda s: abs(int(s.split('-')[0]) - pct))
     f['termin_zalohy_2'] = order.get('x_studio_termin_zalohy_2') or ''
     f['grant_enabled'] = bool(order.get('x_studio_vyse_dotace_kc'))
+    kor = order.get('x_korespondencni_adresa') or ''
+    f['kor_same'] = not kor or kor == KOR_SAME_TEXT
+    f['korespondencni_adresa'] = '' if f['kor_same'] else kor
     return f
 
 
@@ -2661,6 +2698,7 @@ def _dodatek_preview(f):
         'x_studio_cena_po_odecteni_dotace': max(0, c['client_pays']),
         'x_studio_float_field_45q_1jsh2tmcd': c['insul_area'],
         'x_studio_datum_podpisu_smlouvy': date.today().isoformat(),
+        'x_korespondencni_adresa': kor_adresa_value(f.get('kor_same'), f.get('korespondencni_adresa')),
     }
     number = _dodatek_number_preview(call)
     pdf_bytes = generate_dodatek(doc_order, partner, lines, number, order['name'], smlouva_datum)
@@ -2672,7 +2710,7 @@ def _dodatek_preview(f):
     form_snapshot = {k: f[k] for k in _FORM_STRS + _FORM_NONES if f.get(k) not in (None, '')}
     form_snapshot.update({k: bool(f.get(k)) for k in (
         'has_roof', 'has_ceiling', 'has_sikminy', 'has_windows',
-        'extra_5000a', 'extra_5000b', 'extra_5000c')})
+        'extra_5000a', 'extra_5000b', 'extra_5000c', 'kor_same')})
     form_snapshot.update(custom_items=f['custom_items'], okna_items=f['okna_items'],
                          grant_enabled=f.get('grant_enabled_val') not in ('', '0', 'false', 'False'),
                          remaining_grant_k=f.get('remaining_grant_k_val') or '')
