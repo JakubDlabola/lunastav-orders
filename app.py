@@ -1162,7 +1162,23 @@ document.getElementById('mainForm').addEventListener('input', function(e) {{
   if (el.type === 'number' && el.value !== '' && Number(el.value) < 0) el.value = String(Math.abs(Number(el.value)));
 }}, true);
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
-document.getElementById('mainForm').addEventListener('submit', function() {{
+// date of birth: empty, or a real date DD.MM.RRRR (the server checks the same; 00.00.0000 used to crash the confirm)
+function dobValid(v) {{
+  v = (v || '').trim();
+  if (!v) return true;
+  const m = v.replace(/\\//g, '.').match(/^(\\d{{1,2}})\\s*\\.\\s*(\\d{{1,2}})\\s*\\.\\s*(\\d{{4}})$/);
+  if (!m) return false;
+  const d = new Date(+m[3], +m[2] - 1, +m[1]);
+  return +m[3] >= 1900 && d.getFullYear() === +m[3] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[1];
+}}
+document.getElementById('mainForm').addEventListener('submit', function(e) {{
+  const dobEl = document.querySelector('input[name=client_dob]');
+  if (dobEl && !dobValid(dobEl.value)) {{
+    e.preventDefault(); e.stopImmediatePropagation();
+    alert('Datum narození „' + dobEl.value + '“ není platné datum. Zadejte ho ve tvaru DD.MM.RRRR, nebo pole nechte prázdné, pokud ho neznáte.');
+    dobEl.focus();
+    return;
+  }}
   oknaSerialize();
   const items = [];
   document.querySelectorAll('#custom-items-list .custom-item-row').forEach(function(row) {{
@@ -1846,6 +1862,8 @@ def _order_form_post_inner(
     kor_same='1',
     korespondencni_adresa='',
 ):
+    client_dob_iso = _dob_iso(client_dob)  # before anything is written to the order
+
     uid, models = odoo_connect()
 
     def call(model, method, args, kw={}):
@@ -1927,13 +1945,8 @@ def _order_form_post_inner(
         patch['email'] = client_email
     if not partner.get('phone') and client_phone:
         patch['phone'] = client_phone
-    if not partner.get('x_studio_datum_narozeni') and client_dob:
-        try:
-            parts = client_dob.strip().replace('/', '.').split('.')
-            d, m, y = parts[0], parts[1], parts[2]
-            patch['x_studio_datum_narozeni'] = f'{y}-{m.zfill(2)}-{d.zfill(2)}'
-        except Exception:
-            pass
+    if not partner.get('x_studio_datum_narozeni') and client_dob_iso:
+        patch['x_studio_datum_narozeni'] = client_dob_iso
     partner.update(patch)  # apply locally for PDF; Odoo write deferred to confirm
     if not partner.get('email') or '@' not in partner['email']:
         raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání smlouvy k podpisu.')
@@ -2343,6 +2356,19 @@ def _iso_date(text):
         return None
 
 
+def _dob_iso(text):
+    """Date of birth from the form → ISO date, None when empty; HTTP 400 when it isn't a real date
+    (e.g. 00.00.0000, which Odoo rejects on the partner write at confirm)."""
+    text = (text or '').strip()
+    if not text:
+        return None
+    iso = _iso_date(text.replace('/', '.'))
+    if not iso or iso < '1900-01-01':
+        raise HTTPException(status_code=400, detail=f'Datum narození „{text}“ není platné datum. Zadejte ho ve tvaru '
+                                                    'DD.MM.RRRR, nebo pole nechte prázdné, pokud ho neznáte.')
+    return iso
+
+
 def _error_html(title, tb):
     import html as _html
     return HTMLResponse(status_code=500, content=f"""<!doctype html>
@@ -2548,10 +2574,9 @@ def _partner_for_document(call, partner_id, f):
         patch['email'] = f['client_email']
     if not partner.get('phone') and f.get('client_phone'):
         patch['phone'] = f['client_phone']
-    if not partner.get('x_studio_datum_narozeni') and f.get('client_dob'):
-        dob = _iso_date(f['client_dob'].replace('/', '.'))
-        if dob:
-            patch['x_studio_datum_narozeni'] = dob
+    dob = _dob_iso(f.get('client_dob'))
+    if not partner.get('x_studio_datum_narozeni') and dob:
+        patch['x_studio_datum_narozeni'] = dob
     partner.update(patch)
     if not partner.get('email') or '@' not in partner['email']:
         raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání dodatku k podpisu.')

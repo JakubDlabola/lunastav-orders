@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-10-19] — Neplatné datum narození, korespondenční adresa zhotovitele
+- Oprava: potvrzení objednávky spadlo, když bylo datum narození zadané jako „00.00.0000" (Odoo odmítlo datum 0000-00-00 při zápisu do kontaktu; objednávka P262442). Datum narození se nově kontroluje už před náhledem — ve formuláři (hláška) i na serveru (`_dob_iso`): prázdné, nebo platné datum DD.MM.RRRR od roku 1900; povoleny i mezery a lomítka („5. 3. 1958", „5/3/1958"). Totéž v dodatku.
+- Smlouva i dodatek: v bloku zhotovitele pod sídlem řádek „Korespondenční adresa: Gočárova třída 227/50, 500 02 Hradec Králové"
+
 ## [2026-10-16] — Korespondenční adresa
 - Formulář objednávky i dodatku: zaškrtávátko „Korespondenční adresa se shoduje s adresou trvalého bydliště" (výchozí zaškrtnuto); po odškrtnutí pole „Korespondenční adresa"; ukládá se do šablon a návratu z náhledu
 - Odoo: nové pole `x_korespondencni_adresa` (sale.order) v záložce Smlouva o dílo pod Adresou realizace — pohled „LUNASTAV: sale.order form — korespondenční adresa" (`setup_korespondencni_adresa.py`); formulář zapíše „Shodná s trvalou adresou" nebo zadanou adresu
