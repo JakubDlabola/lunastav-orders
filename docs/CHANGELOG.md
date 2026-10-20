@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-10-20] — Telefon z formuláře, haléřové rozdíly ve smlouvě
+- Telefon: zadaný telefon ve formuláři (objednávka i dodatek) má vždy přednost — je ve smlouvě a při potvrzení se zapíše do kontaktu, i když už kontakt nějaký telefon měl (dřív se zapsal jen do prázdného kontaktu a smlouva měla starý)
+- Záloha, doplatek a konečná cena se počítají z celkové ceny přesně tak, jak ji spočítá Odoo a vytiskne smlouva (celé Kč); dřív se mohly lišit o 1 Kč (např. Celkem 210 290, dotace 210 000, konečná cena 289). Doplatek = celkem − záloha. Pokud by přesný výpočet selhal (neznámá daň), použije se původní součet.
+
 ## [2026-10-19] — Neplatné datum narození, korespondenční adresa zhotovitele
 - Oprava: potvrzení objednávky spadlo, když bylo datum narození zadané jako „00.00.0000" (Odoo odmítlo datum 0000-00-00 při zápisu do kontaktu; objednávka P262442). Datum narození se nově kontroluje už před náhledem — ve formuláři (hláška) i na serveru (`_dob_iso`): prázdné, nebo platné datum DD.MM.RRRR od roku 1900; povoleny i mezery a lomítka („5. 3. 1958", „5/3/1958"). Totéž v dodatku.
 - Smlouva i dodatek: v bloku zhotovitele pod sídlem řádek „Korespondenční adresa: Gočárova třída 227/50, 500 02 Hradec Králové"

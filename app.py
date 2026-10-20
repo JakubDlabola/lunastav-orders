@@ -1818,9 +1818,16 @@ def _compute_order(call, f):
     ))
     okna_incl = round(okna_excl * TAX_RATE)
     total = eligible_roof + eligible_ceiling + eligible_sikminy + okna_incl + doprava_price + pochozi_total_incl + custom_total_incl
+    # Split and final price from the order total exactly as Odoo will compute it and the contract prints it
+    # (whole Kč), so Celkem = záloha + doplatek = dotace + konečná cena; the sum above can be 1 Kč off.
+    if order_lines:
+        try:
+            total = int('{:.0f}'.format(_dodatek_lines(call, [cmd[2] for cmd in order_lines])[1]['amount_total']))
+        except RuntimeError:  # a tax the helper can't compute: keep the form's sum
+            logging.warning('Odoo-exact total not available, split from the form sum')
     total_for_split = total
     zaloha   = round(total_for_split * split_pct[0] / 100)
-    doplatek = round(total_for_split * split_pct[1] / 100)
+    doplatek = total_for_split - zaloha
     client_pays = round(total_for_split - grant_amount)
     insul_area = ((float(qty_m2_roof or 0) if has_roof else 0) + (float(qty_m2_ceiling or 0) if has_ceiling else 0)
                   + (float(qty_m2_sikminy or 0) if has_sikminy else 0))
@@ -1943,8 +1950,8 @@ def _order_form_post_inner(
         partner['city'] = client_city
     if client_email:
         patch['email'] = client_email
-    if not partner.get('phone') and client_phone:
-        patch['phone'] = client_phone
+    if client_phone and client_phone.strip() != (partner.get('phone') or '').strip():
+        patch['phone'] = client_phone.strip()  # the form wins (also over a phone already in Odoo)
     if not partner.get('x_studio_datum_narozeni') and client_dob_iso:
         patch['x_studio_datum_narozeni'] = client_dob_iso
     partner.update(patch)  # apply locally for PDF; Odoo write deferred to confirm
@@ -2572,8 +2579,8 @@ def _partner_for_document(call, partner_id, f):
     patch = {}
     if f.get('client_email'):
         patch['email'] = f['client_email']
-    if not partner.get('phone') and f.get('client_phone'):
-        patch['phone'] = f['client_phone']
+    if f.get('client_phone') and f['client_phone'].strip() != (partner.get('phone') or '').strip():
+        patch['phone'] = f['client_phone'].strip()  # the form wins (also over a phone already in Odoo)
     dob = _dob_iso(f.get('client_dob'))
     if not partner.get('x_studio_datum_narozeni') and dob:
         patch['x_studio_datum_narozeni'] = dob
