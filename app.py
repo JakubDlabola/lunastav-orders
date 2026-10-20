@@ -1952,8 +1952,8 @@ def _order_form_post_inner(
         patch['email'] = client_email
     if client_phone and client_phone.strip() != (partner.get('phone') or '').strip():
         patch['phone'] = client_phone.strip()  # the form wins (also over a phone already in Odoo)
-    if not partner.get('x_studio_datum_narozeni') and client_dob_iso:
-        patch['x_studio_datum_narozeni'] = client_dob_iso
+    if client_dob_iso and client_dob_iso != partner.get('x_studio_datum_narozeni'):
+        patch['x_studio_datum_narozeni'] = client_dob_iso  # the form wins (also over a date already in Odoo)
     partner.update(patch)  # apply locally for PDF; Odoo write deferred to confirm
     if not partner.get('email') or '@' not in partner['email']:
         raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání smlouvy k podpisu.')
@@ -2083,7 +2083,7 @@ def _order_form_confirm_inner(token, draft):
     salesperson_partner_id = draft['salesperson_partner_id']
 
     if patch:
-        call('res.partner', 'write', [[partner_id_val], patch])
+        _write_client_patch(call, partner_id_val, patch, f'objednávkového formuláře ({order_name})', order_id)
 
     call('ir.attachment', 'create', [{
         'name': filename,
@@ -2363,6 +2363,29 @@ def _iso_date(text):
         return None
 
 
+def _write_client_patch(call, partner_id, patch, source, order_id=None):
+    """Write the form's client changes to the contact; changed phone / date of birth get a note in the
+    contact's chatter (and the order's, when given) with the old and new value."""
+    old = call('res.partner', 'read', [[partner_id]], {'fields': ['phone', 'x_studio_datum_narozeni']})[0]
+    call('res.partner', 'write', [[partner_id], patch])
+    changes = []
+    if 'phone' in patch and (old.get('phone') or '') != patch['phone']:
+        changes.append(f'telefon „{old.get("phone") or "–"}" → „{patch["phone"]}"')
+    if 'x_studio_datum_narozeni' in patch and old.get('x_studio_datum_narozeni') != patch['x_studio_datum_narozeni']:
+        changes.append(f'datum narození {_cz_date(old.get("x_studio_datum_narozeni")) or "–"} → '
+                       f'{_cz_date(patch["x_studio_datum_narozeni"])}')
+    if not changes:
+        return
+    body = f'Údaje klienta upraveny z {source}: ' + '; '.join(changes) + '.'
+    for model, rid in (('res.partner', partner_id), ('sale.order', order_id)):
+        if rid:
+            try:
+                call(model, 'message_post', [[rid]], {'body': body, 'message_type': 'comment',
+                                                      'subtype_xmlid': 'mail.mt_note'})
+            except Exception:
+                logging.error(f'Chatter note on {model} {rid} failed:\n' + __import__('traceback').format_exc())
+
+
 def _dob_iso(text):
     """Date of birth from the form → ISO date, None when empty; HTTP 400 when it isn't a real date
     (e.g. 00.00.0000, which Odoo rejects on the partner write at confirm)."""
@@ -2582,8 +2605,8 @@ def _partner_for_document(call, partner_id, f):
     if f.get('client_phone') and f['client_phone'].strip() != (partner.get('phone') or '').strip():
         patch['phone'] = f['client_phone'].strip()  # the form wins (also over a phone already in Odoo)
     dob = _dob_iso(f.get('client_dob'))
-    if not partner.get('x_studio_datum_narozeni') and dob:
-        patch['x_studio_datum_narozeni'] = dob
+    if dob and dob != partner.get('x_studio_datum_narozeni'):
+        patch['x_studio_datum_narozeni'] = dob  # the form wins (also over a date already in Odoo)
     partner.update(patch)
     if not partner.get('email') or '@' not in partner['email']:
         raise HTTPException(status_code=400, detail='E-mail klienta je povinný pro odeslání dodatku k podpisu.')
@@ -2827,7 +2850,7 @@ def _dodatek_confirm(draft):
         pdf_bytes = generate_dodatek(doc_order, partner, lines, number, order['name'], draft['smlouva_datum'])
 
     if draft['patch']:
-        call('res.partner', 'write', [[order['partner_id'][0]], draft['patch']])
+        _write_client_patch(call, order['partner_id'][0], draft['patch'], f'formuláře dodatku ({number})')
     client = partner.get('name', '')
     doc_prefix = f'{client} - {number}' if client else number
     att_id = call('ir.attachment', 'create', [{

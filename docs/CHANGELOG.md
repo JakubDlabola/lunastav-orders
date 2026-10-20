@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026-10-20] — Datum narození z formuláře, poznámky v chatteru
+- Datum narození: zadané datum ve formuláři (objednávka i dodatek) má vždy přednost — je ve smlouvě a při potvrzení se zapíše do kontaktu, i když už kontakt nějaké datum měl
+- Změna telefonu nebo data narození se při potvrzení zapíše jako poznámka do chatteru kontaktu (a u objednávky i do chatteru objednávky; dodatek objednávku nemění), např. „Údaje klienta upraveny z objednávkového formuláře (P262461): telefon „…" → „605 306 030"; datum narození 20.03.1952 → 21.03.1952." — `_write_client_patch()`
+
 ## [2026-10-20] — Telefon z formuláře, haléřové rozdíly ve smlouvě
 - Telefon: zadaný telefon ve formuláři (objednávka i dodatek) má vždy přednost — je ve smlouvě a při potvrzení se zapíše do kontaktu, i když už kontakt nějaký telefon měl (dřív se zapsal jen do prázdného kontaktu a smlouva měla starý)
 - Záloha, doplatek a konečná cena se počítají z celkové ceny přesně tak, jak ji spočítá Odoo a vytiskne smlouva (celé Kč); dřív se mohly lišit o 1 Kč (např. Celkem 210 290, dotace 210 000, konečná cena 289). Doplatek = celkem − záloha. Pokud by přesný výpočet selhal (neznámá daň), použije se původní součet.
