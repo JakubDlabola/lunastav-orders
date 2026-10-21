@@ -8,6 +8,7 @@
   if still empty, on signing by Výše dotace.
 - automation on sale.order: state → sale (Objednávka podepsána).
 - search: filters S dotací / Bez dotace and group by in the pipeline and in quotations / orders.
+- list column: optional, hidden in the opportunity lists, shown in the quotation / order lists.
 - --backfill: CZ opportunities with a signed order, and CZ orders (grant > 0 → S dotací, no grant but
   with lines → Bez dotace, empty orders stay empty); without chatter entries.
 Undo: archive the two views and the automation (the fields can stay).
@@ -95,6 +96,16 @@ ensure_view('LUNASTAV: crm.lead search — objednávka s dotací', 'crm.lead',
             xid('crm', 'view_crm_case_opportunities_filter'), SEARCH_ARCH, 'search')
 ensure_view('LUNASTAV: sale.order search — objednávka s dotací', 'sale.order',
             xid('sale', 'view_sales_order_filter'), SEARCH_ARCH, 'search')
+
+# list column: optional, hidden in the opportunity lists, shown in the quotation / order lists
+ensure_view('LUNASTAV: crm.lead list — objednávka s dotací', 'crm.lead', xid('crm', 'crm_case_tree_view_oppor'),
+            f"""<xpath expr="//field[@name='stage_id']" position="after">
+  <field name="{FIELD}" optional="hide"/>
+</xpath>""", 'list')
+ensure_view('LUNASTAV: sale.order list — objednávka s dotací', 'sale.order', xid('sale', 'sale_order_tree'),
+            f"""<xpath expr="//field[@name='partner_id']" position="after">
+  <field name="{FIELD}" optional="show"/>
+</xpath>""", 'list')
 
 AUTOMATION = 'LUNASTAV CZ: Objednávka s dotací? při podpisu objednávky'
 CODE = f"""# order signed (Objednávka podepsána): opportunity = S dotací if any of its signed orders has a grant
