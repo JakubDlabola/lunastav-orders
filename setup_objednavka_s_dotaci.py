@@ -7,6 +7,7 @@
 - sale.order.x_objednavka_s_dotaci: read-only, tracked; written by the order form (grant dialog) and,
   if still empty, on signing by Výše dotace.
 - automation on sale.order: state → sale (Objednávka podepsána).
+- search: filters S dotací / Bez dotace and group by in the pipeline and in quotations / orders.
 - --backfill: CZ opportunities with a signed order, and CZ orders (grant > 0 → S dotací, no grant but
   with lines → Bez dotace, empty orders stay empty); without chatter entries.
 Undo: archive the two views and the automation (the fields can stay).
@@ -49,8 +50,8 @@ def ensure_field(model):
             'selection_ids': [(0, 0, {'value': v, 'name': n, 'sequence': i}) for i, (v, n) in enumerate(VALUES)]}])
 
 
-def ensure_view(name, model, inherit_id, arch):
-    vals = {'name': name, 'model': model, 'type': 'form', 'mode': 'extension', 'inherit_id': inherit_id,
+def ensure_view(name, model, inherit_id, arch, vtype='form'):
+    vals = {'name': name, 'model': model, 'type': vtype, 'mode': 'extension', 'inherit_id': inherit_id,
             'priority': 500, 'arch_db': arch}
     existing = call('ir.ui.view', 'search', [[('name', '=', name)]], {'context': {'active_test': False}})
     print(f'{dry}view "{name}": {"update" if existing else "create"}')
@@ -80,6 +81,20 @@ ensure_view('LUNASTAV: sale.order form — objednávka s dotací', 'sale.order',
     <field name="{FIELD}" readonly="1" invisible="company_id == {SK_COMPANY}"/>
   </xpath>
 </data>""")
+
+# search: filters S dotací / Bez dotace and group by, in the pipeline and in quotations / orders
+SEARCH_ARCH = f"""<xpath expr="//search" position="inside">
+  <separator/>
+  <filter name="x_s_dotaci" string="S dotací" domain="[('{FIELD}', '=', 's_dotaci')]"/>
+  <filter name="x_bez_dotace" string="Bez dotace" domain="[('{FIELD}', '=', 'bez_dotace')]"/>
+  <filter name="x_groupby_s_dotaci" string="{LABEL}" context="{{'group_by': '{FIELD}'}}"/>
+</xpath>"""
+xid = lambda module, name: call('ir.model.data', 'search_read', [[('module', '=', module), ('name', '=', name)]],
+                                {'fields': ['res_id']})[0]['res_id']
+ensure_view('LUNASTAV: crm.lead search — objednávka s dotací', 'crm.lead',
+            xid('crm', 'view_crm_case_opportunities_filter'), SEARCH_ARCH, 'search')
+ensure_view('LUNASTAV: sale.order search — objednávka s dotací', 'sale.order',
+            xid('sale', 'view_sales_order_filter'), SEARCH_ARCH, 'search')
 
 AUTOMATION = 'LUNASTAV CZ: Objednávka s dotací? při podpisu objednávky'
 CODE = f"""# order signed (Objednávka podepsána): opportunity = S dotací if any of its signed orders has a grant

@@ -4,6 +4,7 @@
 - Nové pole „Objednávka s dotací?" (S dotací / Bez dotace) na příležitosti i objednávce, jen pro čtení, změny se zapisují do chatteru; na SK skryté (`setup_objednavka_s_dotaci.py`)
 - Příležitost: pole je místo „Realizace:" (x_studio_realizace je jen skryté, 25 odkazů na úkoly zůstává v datech); vyplní se až při podpisu objednávky — S dotací, pokud má kterákoli podepsaná objednávka příležitosti Výši dotace > 0, jinak Bez dotace (automatizace 105 „LUNASTAV CZ: Objednávka s dotací? při podpisu objednávky")
 - Objednávka: pole hned vedle zákazníka; zapíše ho objednávkový formulář podle volby s dotací / bez dotace, při podpisu se doplní, pokud je prázdné
+- Vyhledávání: filtry „S dotací" / „Bez dotace" a seskupení podle „Objednávka s dotací?" v příležitostech (pipeline) i v nabídkách / objednávkách
 - Zpětně vyplněno bez záznamů v chatteru: 1 332 příležitostí S dotací, 80 Bez dotace (příležitosti s podepsanou objednávkou); objednávky 1 649 S dotací, 114 Bez dotace, 119 prázdných (bez řádků) zůstává prázdných
 
 ## [2026-10-20] — Datum narození z formuláře, poznámky v chatteru
