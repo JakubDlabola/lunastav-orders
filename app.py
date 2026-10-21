@@ -1899,6 +1899,7 @@ def _order_form_post_inner(
         'x_studio_float_field_45q_1jsh2tmcd': insul_area,
         'x_studio_adresa_realizace': addr_value,
         'x_korespondencni_adresa': kor_adresa_value(kor_same, korespondencni_adresa),
+        'x_objednavka_s_dotaci': 's_dotaci' if grant_enabled_val not in ('', '0', 'false', 'False') else 'bez_dotace',
         'x_studio_popis_dila': popis_dila or '',
         'x_studio_termin_dokonceni_2': termin_dokonceni or '',
         'x_studio_termin_zalohy_2': termin_zalohy_2 or '',

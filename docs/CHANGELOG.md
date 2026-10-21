@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-10-21] — Objednávka s dotací? na příležitosti a objednávce
+- Nové pole „Objednávka s dotací?" (S dotací / Bez dotace) na příležitosti i objednávce, jen pro čtení, změny se zapisují do chatteru; na SK skryté (`setup_objednavka_s_dotaci.py`)
+- Příležitost: pole je místo „Realizace:" (x_studio_realizace je jen skryté, 25 odkazů na úkoly zůstává v datech); vyplní se až při podpisu objednávky — S dotací, pokud má kterákoli podepsaná objednávka příležitosti Výši dotace > 0, jinak Bez dotace (automatizace 105 „LUNASTAV CZ: Objednávka s dotací? při podpisu objednávky")
+- Objednávka: pole hned vedle zákazníka; zapíše ho objednávkový formulář podle volby s dotací / bez dotace, při podpisu se doplní, pokud je prázdné
+- Zpětně vyplněno bez záznamů v chatteru: 1 332 příležitostí S dotací, 80 Bez dotace (příležitosti s podepsanou objednávkou); objednávky 1 649 S dotací, 114 Bez dotace, 119 prázdných (bez řádků) zůstává prázdných
+
 ## [2026-10-20] — Datum narození z formuláře, poznámky v chatteru
 - Datum narození: zadané datum ve formuláři (objednávka i dodatek) má vždy přednost — je ve smlouvě a při potvrzení se zapíše do kontaktu, i když už kontakt nějaké datum měl
 - Změna telefonu nebo data narození se při potvrzení zapíše jako poznámka do chatteru kontaktu (a u objednávky i do chatteru objednávky; dodatek objednávku nemění), např. „Údaje klienta upraveny z objednávkového formuláře (P262461): telefon „…" → „605 306 030"; datum narození 20.03.1952 → 21.03.1952." — `_write_client_patch()`
