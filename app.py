@@ -1189,7 +1189,8 @@ document.getElementById('mainForm').addEventListener('submit', function(e) {{
     if (desc && qty > 0 && price > 0) items.push({{desc: desc, qty: qty, unit: unit, price: price}});
   }});
   document.getElementById('inp_custom_items').value = JSON.stringify(items);
-  document.getElementById('inp_grant_enabled_val').value = document.getElementById('grant_enabled').checked ? '1' : '';
+  // '0', not '': FastAPI treats an empty form value as missing and would use the default '1' (with grant)
+  document.getElementById('inp_grant_enabled_val').value = document.getElementById('grant_enabled').checked ? '1' : '0';
   document.getElementById('inp_remaining_grant_k_val').value = document.getElementById('remaining_grant_k').value || '';
   document.getElementById('inp_termin_dokonceni_manual').value = _manualFields.has('termin_dokonceni') ? '1' : '';
   document.getElementById('inp_popis_dila_manual').value = _manualFields.has('popis_dila') ? '1' : '';

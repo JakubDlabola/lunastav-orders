@@ -1,5 +1,8 @@
 # Changelog
 
+## [2026-10-26] — Oprava: volba „Bez dotace" se na server nepřenesla
+- Formulář posílal u „Bez dotace" prázdnou hodnotu a FastAPI ji nahradil výchozí „1" (s dotací). Následky: pole „Objednávka s dotací?" by z formuláře bylo vždy S dotací a uložený stav formuláře (návrat z náhledu, šablony) vždy „s dotací". Ceny zasažené nebyly (dotaci počítá prohlížeč). Nově se posílá „0".
+
 ## [2026-10-21] — Objednávka s dotací? na příležitosti a objednávce
 - Nové pole „Objednávka s dotací?" (S dotací / Bez dotace) na příležitosti i objednávce, jen pro čtení, změny se zapisují do chatteru; na SK skryté (`setup_objednavka_s_dotaci.py`)
 - Příležitost: pole je místo „Realizace:" (x_studio_realizace je jen skryté, 25 odkazů na úkoly zůstává v datech); vyplní se až při podpisu objednávky — S dotací, pokud má kterákoli podepsaná objednávka příležitosti Výši dotace > 0, jinak Bez dotace (automatizace 105 „LUNASTAV CZ: Objednávka s dotací? při podpisu objednávky")
