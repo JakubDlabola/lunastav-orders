@@ -6,6 +6,7 @@ but order lines are always recomputed here from the submitted items.
 """
 import json
 import os
+import re
 
 CENIK = json.load(open(os.path.join(os.path.dirname(__file__), 'okna_cenik_2026.json'), encoding='utf-8'))
 
@@ -182,6 +183,54 @@ def lines(items, prace):
         out.append({'code': BASIC_WORK.get(name, CODE_OTHER_WORK), 'unit': unit, 'qty': qty,
                     'price': prace_cena(name), 'name': label})
     return out
+
+
+def rebuild_from_lines(rows):
+    """Calculator state (items, prace) from order lines [{code, name, qty}], the reverse of lines().
+    None if a line can't be read back (e.g. the old windows priced per m²)."""
+    code_type = {code: typ for typ, (code, _) in TYPES.items()}
+    surfaces = {label: key for key, label in SURFACES.items()}
+    groups = {label: key for key, label in PARAPET_GROUPS.items()}
+    items, basic_qty, dalsi = [], {}, {}
+
+    def owner(name):  # "(k pol. 3)" names the item when there are more of them, else the only one
+        m = re.search(r'\(k pol\. (\d+)\)', name)
+        return items[int(m.group(1)) - 1] if m and int(m.group(1)) <= len(items) else (items[-1] if items else None)
+
+    for row in rows:
+        code, name, qty = row['code'], row['name'] or '', row['qty']
+        if code in code_type:
+            m = re.fullmatch(r'.+?, (.+?), (\d+) × (\d+) mm, (\w+)', name)
+            if not m or m.group(1) not in surfaces:
+                return None
+            items.append({'typ': code_type[code], 'povrch': surfaces[m.group(1)], 'sklo': m.group(4),
+                          'sirka': int(m.group(2)), 'vyska': int(m.group(3)), 'ks': int(qty),
+                          'parapet': None, 'zaluzie': None, 'sit': None})
+        elif code == CODE_PARAPET:
+            m = re.match(r'Parapet vnitřní PVC (\d+) mm, (.+?), ([\d,]+) m', name)
+            item = owner(name)
+            if not m or m.group(2) not in groups or not item:
+                return None
+            item['parapet'] = {'hloubka': int(m.group(1)), 'skupina': groups[m.group(2)],
+                               'delkaM': float(m.group(3).replace(',', '.'))}
+        elif code in (CODE_ZALUZIE, CODE_SIT):
+            m = re.search(r'(\d+) × (\d+) mm', name)
+            item = owner(name)
+            if not m or not item:
+                return None
+            item['zaluzie' if code == CODE_ZALUZIE else 'sit'] = {'sirka': int(m.group(1)), 'vyska': int(m.group(2))}
+        elif code in BASIC_WORK.values():
+            work = next((n for n, c in BASIC_WORK.items() if c == code), None)
+            basic_qty[work] = qty
+        elif code == CODE_OTHER_WORK:
+            work = name if name in WORK else re.sub(r' \([^()]*\)$', '', name)
+            if work not in WORK:
+                return None
+            dalsi[work] = qty
+    obvod = obvod_bm(items)
+    basic = {n: {'on': n in basic_qty, 'manual': None if abs(basic_qty.get(n, obvod) - obvod) < 1e-6 else basic_qty[n]}
+             for n in BASIC_WORK}
+    return items, {'basic': basic, 'dalsi': dalsi}
 
 
 COSMETIC_DISC = 3.0  # every line shows the 3 % discount: unit price = price / 0.97, discount 3 %

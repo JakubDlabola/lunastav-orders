@@ -46,3 +46,5 @@ Délka parapetu a rozměry žaluzie a sítě se předvyplní podle rozměru výp
 ## Starší zakázky
 
 U zakázek zadaných před touto změnou (okna v m²) se při **načtení šablony** nebo v **dodatku** okna nepřenesou. Je potřeba je zadat znovu v kalkulačce. Ostatní údaje se přenesou jako dřív.
+
+U objednávky, která už má položky, se tlačítkem **„Objednávkový formulář"** otevře formulář vyplněný údaji z objednávky, včetně oken a dveří. Když se formulář zavře před potvrzením, nic se neztratí: stačí ho otevřít znovu.

@@ -1221,7 +1221,7 @@ function prefillForm(d, templateMode) {{
     el.value = val;
     el.removeAttribute('readonly');
     const btn = document.getElementById('edit-btn-' + id);
-    if (btn) btn.classList.add('active');
+    if (btn) {{ btn.classList.add('active'); btn.textContent = '\u21a9 Obnovit automatick\u00e9 vypl\u0148ov\u00e1n\u00ed'; }}
   }}
   if (d.has_roof)    document.getElementById('chk_roof').checked    = true;
   if (d.has_ceiling) document.getElementById('chk_ceiling').checked = true;
@@ -1290,6 +1290,10 @@ function prefillForm(d, templateMode) {{
   else {{ radio('termin_days', d.termin_days); radio('termin_cond', d.termin_cond); updateTermin(); }}
   if (d.popis_dila_manual && d.popis_dila) manualField('popis_dila', d.popis_dila); else updatePopisDila();
   if (d.stavebni_pripravenost_manual && d.stavebni_pripravenost) manualField('stavebni_pripravenost', d.stavebni_pripravenost); else updateStavebni();
+  [['popis_dila', d.popis_dila_stored], ['stavebni_pripravenost', d.stavebni_stored]].forEach(function(pair) {{
+    const el = document.getElementById(pair[0]);
+    if (el && pair[1] && pair[1].split(/\\s+/).join(' ').trim() !== el.value.split(/\\s+/).join(' ').trim()) manualField(pair[0], pair[1]);
+  }});
   checkSubmit();
 }}
 oknaInit();
@@ -1408,7 +1412,9 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
     def call(model, method, args, kw={}):
         return models.execute_kw(ODOO_DB, uid, ODOO_API_KEY, model, method, args, kw)
 
-    orders = call('sale.order', 'read', [[order_id]], {'fields': ['name', 'partner_id', 'opportunity_id', 'user_id']})
+    orders = call('sale.order', 'read', [[order_id]], {'fields': _DODATEK_ORDER_FIELDS + [
+        'x_studio_adresa_realizace', 'x_studio_termin_dokonceni_2', 'x_objednavka_s_dotaci',
+        'x_studio_popis_dila', 'x_studio_stavebni_pripravenost']})
     if not orders:
         raise HTTPException(status_code=404, detail=f'Objednávka {order_id} nenalezena')
     order = orders[0]
@@ -1443,6 +1449,14 @@ def order_form_get(order_id: int = Query(...), key: str = Query(...), test: int 
 
     import json as _json
     _draft_form = _drafts.get(draft, {}).get('form') if draft else None
+    if not _draft_form and order.get('order_line'):
+        try:
+            _draft_form = _order_form_prefill(call, order_id, order)
+        except Exception:  # the form still works, just empty
+            logging.error(f'Order form prefill failed for {order_id}:\n' + __import__('traceback').format_exc())
+        _grant = int(order.get('x_studio_vyse_dotace_kc') or 0)
+        if _draft_form and 'remaining_grant_k' not in _draft_form and _grant > int(remaining_grant_k or 0):
+            remaining_grant_k = str(_grant)  # the opportunity's limit dropped since: don't recalculate the order lower
     if _draft_form:
         if _draft_form.get('client_name'):   partner_name   = _draft_form['client_name']
         if _draft_form.get('client_email'):  partner_email  = _draft_form['client_email']
@@ -2016,6 +2030,19 @@ def _order_form_post_inner(
         },
     }
 
+    import uuid as _uuid3, datetime as _dt3
+    _append_log_entry({
+        'log_id':           _uuid3.uuid4().hex,
+        'kind':             'preview',  # not offered as a template, only reopens this order's form
+        'order_id':         order_id,
+        'order_name':       updated['name'],
+        'partner_name':     partner.get('name', ''),
+        'opportunity_name': _crm_opportunity,
+        'salesperson':      _crm_obchodnik,
+        'created_at':       _dt3.datetime.now().isoformat(timespec='seconds'),
+        'form':             _drafts[token]['form'],
+    })
+
     _pdf_url   = f'/order-form/preview-pdf/{token}?key={key}'
     # Pages as images: iOS Safari shows only the first page of a PDF in an iframe
     from pypdf import PdfReader as _PdfReader
@@ -2277,6 +2304,8 @@ def history_search(key: str = Query(...), q: str = Query('')):
             entry = _json2.loads(raw)
         except Exception:
             continue
+        if entry.get('kind') == 'preview':
+            continue
         if q_lower and not any(
             q_lower in str(entry.get(k, '')).lower()
             for k in ('order_name', 'partner_name', 'opportunity_name', 'salesperson', 'created_at')
@@ -2495,7 +2524,7 @@ def _form_from_order(call, order):
              for p in call('product.product', 'read', [pids], {'fields': ['default_code']})} if pids else {}
     materials = {'3000': 'thermofloc', '3100': 'supafil', '3200': 'strikana'}
     kinds = {'A': 'roof', 'B': 'ceiling', 'C': 'sikminy'}
-    f, custom = {}, []
+    f, custom, okna_rows = {}, [], []
     for ln in lines:
         if ln.get('display_type') or not ln.get('product_id'):
             continue
@@ -2509,7 +2538,8 @@ def _form_from_order(call, order):
             if th:
                 f[f'thickness_{kind}'] = th.group(1)
         elif code in okna.ALL_CODES or code in ('4100', '4000A', '4000B', '4000C', '4001A', '4001B'):
-            f['has_windows'] = True  # windows/doors can't be rebuilt from lines: re-enter them in the calculator
+            f['has_windows'] = True
+            okna_rows.append({'code': code, 'name': ln.get('name') or '', 'qty': qty})
         elif code in ('5100', '5101'):  # free and paid part can be two lines
             total = float(f.get(f'qty_{code}') or 0) + qty
             f[f'qty_{code}'] = str(int(total)) if total == int(total) else str(round(total, 2))
@@ -2521,6 +2551,11 @@ def _form_from_order(call, order):
                            'price': ln.get('price_unit') or 0})
     if custom:
         f['custom_items'] = _json2.dumps(custom, ensure_ascii=False)
+    # old windows priced per m² can't be read back: the section opens empty, to be entered in the calculator
+    rebuilt = okna.rebuild_from_lines(okna_rows) if okna_rows else None
+    if rebuilt:
+        f['okna_items'] = _json2.dumps(rebuilt[0], ensure_ascii=False, separators=(',', ':'))
+        f['okna_prace'] = _json2.dumps(rebuilt[1], ensure_ascii=False, separators=(',', ':'))
     zaloha, doplatek = order.get('x_studio_zaloha_kc') or 0, order.get('x_studio_doplatek_kc') or 0
     if zaloha + doplatek:
         pct = zaloha / (zaloha + doplatek) * 100
@@ -2530,7 +2565,95 @@ def _form_from_order(call, order):
     kor = order.get('x_korespondencni_adresa') or ''
     f['kor_same'] = not kor or kor == KOR_SAME_TEXT
     f['korespondencni_adresa'] = '' if f['kor_same'] else kor
+    addr = order.get('x_studio_adresa_realizace') or ''
+    if addr and not addr.startswith('shodné'):
+        f.update(addr_same=False, adresa_realizace=addr)
+    termin = order.get('x_studio_termin_dokonceni_2') or ''
+    if termin:
+        m = re.fullmatch(r'do (45|90|150) dnů od (schválení dotace|podpisu smlouvy|obdržení zálohové platby ve výši (\d+) % z celkové ceny)', termin)
+        if m and (not m.group(3) or m.group(3) == (f.get('split') or '').split('-')[0]):
+            f['termin_days'] = m.group(1)
+            if not m.group(3):
+                f['termin_cond'] = 'dotace' if 'dotace' in m.group(2) else 'podpis'
+        else:
+            f.update(termin_dokonceni=termin, termin_dokonceni_manual=True)
+    # a limited grant is recalculated from the same limit
+    grant = order.get('x_studio_vyse_dotace_kc') or 0
+    full = (2000 * (float(f.get('qty_m2_roof') or 0) + float(f.get('qty_m2_sikminy') or 0))
+            + 750 * float(f.get('qty_m2_ceiling') or 0)
+            + (8000 * okna.plocha_m2(okna.normalize_items(rebuilt[0])) if rebuilt else 0))
+    if 0 < grant < full - 1:
+        f['remaining_grant_k'] = str(int(grant))
+    # shown as they are if they differ from what the form would generate
+    f['popis_dila_stored'] = order.get('x_studio_popis_dila') or ''
+    f['stavebni_stored'] = order.get('x_studio_stavebni_pripravenost') or ''
     return f
+
+
+def _form_matches_order(form, rebuilt):
+    """Does a saved form state still describe the order (rebuilt from its lines)? Lines edited by hand in Odoo → no."""
+    import json as _json2
+
+    def num(v):
+        return round(float(v or 0), 2)
+    for kind in ('roof', 'ceiling', 'sikminy'):
+        if bool(form.get(f'has_{kind}')) != bool(rebuilt.get(f'has_{kind}')):
+            return False
+        if rebuilt.get(f'has_{kind}') and (form.get(f'material_{kind}') != rebuilt.get(f'material_{kind}')
+                                           or num(form.get(f'qty_m2_{kind}')) != num(rebuilt.get(f'qty_m2_{kind}'))):
+            return False
+    if rebuilt.get('has_ceiling') and any(num(form.get(q)) != num(rebuilt.get(q)) for q in ('qty_5100', 'qty_5101')):
+        return False
+    if rebuilt.get('has_roof') and any(bool(form.get(x)) != bool(rebuilt.get(x)) for x in ('extra_5000a', 'extra_5000b', 'extra_5000c')):
+        return False
+    if len(_json2.loads(form.get('custom_items') or '[]')) != len(_json2.loads(rebuilt.get('custom_items') or '[]')):
+        return False
+    if bool(form.get('has_windows')) != bool(rebuilt.get('has_windows')):
+        return False
+    if rebuilt.get('has_windows'):
+        if not rebuilt.get('okna_items'):
+            return False
+
+        def rows(state):
+            items = okna.normalize_items(_json2.loads(state['okna_items']))
+            return sorted((r['code'], r['name'], num(r['qty'])) for r in okna.lines(items, _json2.loads(state.get('okna_prace') or '{}')))
+        try:
+            return rows(form) == rows(rebuilt)
+        except (okna.CenikError, ValueError, KeyError, TypeError):
+            return False
+    return True
+
+
+def _order_form_prefill(call, order_id, order):
+    """Form values for an order that already has lines: its latest saved form state if that still matches the
+    order, else rebuilt from the lines."""
+    import json as _json2
+    entry = None
+    try:
+        with open(_LOG_FILE, 'r', encoding='utf-8') as _lf:
+            for raw in _lf:
+                try:
+                    row = _json2.loads(raw)
+                except Exception:
+                    continue
+                if str(row.get('order_id')) == str(order_id) and row.get('form') and row.get('kind') in (None, 'preview'):
+                    entry = row
+    except FileNotFoundError:
+        pass
+    rebuilt = _form_from_order(call, order)
+    form = dict(entry['form']) if entry and _form_matches_order(entry['form'], rebuilt) else None
+    if form is None:
+        form = rebuilt
+    else:
+        # email, phone and date of birth reach the contact on confirm: only an unconfirmed preview still knows newer ones
+        if entry.get('kind') != 'preview':
+            for field in ('client_email', 'client_phone', 'client_dob'):
+                form.pop(field, None)
+    if order.get('x_objednavka_s_dotaci'):
+        form['grant_enabled'] = order['x_objednavka_s_dotaci'] == 's_dotaci'
+    elif not order.get('x_studio_vyse_dotace_kc'):
+        form['grant_enabled'] = False
+    return form
 
 
 def _round_half_up(value):

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2026-11-04] — Objednávkový formulář se otevře vyplněný
+- Tlačítko „Objednávkový formulář" u objednávky, která už má položky, otevře formulář vyplněný údaji objednávky; okno „Zakázka s dotací?" se neukáže (volba se vezme z objednávky)
+- Zdroj: poslední uložený stav formuláře této objednávky, pokud stále odpovídá položkám v objednávce; jinak se formulář složí z položek objednávky (nově včetně oken a dveří, příslušenství a služeb, adresy realizace, termínu; `okna.rebuild_from_lines`, `_order_form_prefill`)
+- Stav formuláře se ukládá už při náhledu (`kind: preview` v `orders_log.jsonl`), takže přežije zavření stránky i restart služby, včetně e-mailu, telefonu a data narození zadaných před potvrzením; do seznamu šablon se tyto záznamy nedostanou
+- Popis díla a stavební připravenost: pokud se text v objednávce liší od automatického, zobrazí se text z objednávky a tlačítko nabídne „Obnovit automatické vyplňování"
+- Zůstává: ceny se při novém odeslání počítají podle aktuálních pravidel; stará okna zadaná v m² se z položek nedají složit (sekce se otevře prázdná); dodatek nově přebírá i okna složená z položek
+
 ## [2026-10-26] — Oprava: volba „Bez dotace" se na server nepřenesla
 - Formulář posílal u „Bez dotace" prázdnou hodnotu a FastAPI ji nahradil výchozí „1" (s dotací). Následky: pole „Objednávka s dotací?" by z formuláře bylo vždy S dotací a uložený stav formuláře (návrat z náhledu, šablony) vždy „s dotací". Ceny zasažené nebyly (dotaci počítá prohlížeč). Nově se posílá „0".
 
