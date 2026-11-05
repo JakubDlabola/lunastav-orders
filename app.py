@@ -496,7 +496,7 @@ def _form_page(ctx):
       </div>
       <div>
         <label style="font-size:12px;color:#888;">E-mail klienta</label>
-        <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta" required>
+        <input type="email" name="client_email" value="{partner_email}" placeholder="E-mail klienta" required onchange="checkSubmit()">
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Telefon</label>
@@ -504,7 +504,7 @@ def _form_page(ctx):
       </div>
       <div>
         <label style="font-size:12px;color:#888;">Datum narození</label>
-        <input type="text" name="client_dob" value="{partner_dob}" placeholder="DD.MM.RRRR">
+        <input type="text" name="client_dob" value="{partner_dob}" placeholder="DD.MM.RRRR" required onchange="checkSubmit()">
       </div>
       <div style="margin-top:4px;">
         <div style="display:flex;align-items:center;gap:10px;">
@@ -1138,6 +1138,11 @@ function checkSubmit() {{
       missing.push('Zadejte datum uzavření původní smlouvy (DD.MM.RRRR)');
     if (!terminZalohy2)         missing.push('Vyberte termín splatnosti zálohy');
     if (!phoneOk)               missing.push('Zadejte platné telefonní číslo (min. 9 číslic)');
+    const clientEmail = (document.querySelector('input[name=client_email]')?.value || '').trim();
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(clientEmail)) missing.push('Zadejte platný e-mail klienta');
+    const clientDob = document.querySelector('input[name=client_dob]')?.value || '';
+    if (!clientDob.trim())      missing.push('Zadejte datum narození klienta');
+    else if (!dobValid(clientDob)) missing.push('Zadejte platné datum narození (DD.MM.RRRR)');
     if (eTotal <= 0 && missing.length === 0) missing.push('Vypočítejte cenu před odesláním');
   }}
 
@@ -1162,10 +1167,9 @@ document.getElementById('mainForm').addEventListener('input', function(e) {{
   if (el.type === 'number' && el.value !== '' && Number(el.value) < 0) el.value = String(Math.abs(Number(el.value)));
 }}, true);
 document.getElementById('mainForm').addEventListener('change', () => {{ calc(); checkSubmit(); updateStavebni(); updatePopisDila(); }});
-// date of birth: empty, or a real date DD.MM.RRRR (the server checks the same; 00.00.0000 used to crash the confirm)
+// date of birth: mandatory, a real date DD.MM.RRRR (the server checks the same; 00.00.0000 used to crash the confirm)
 function dobValid(v) {{
   v = (v || '').trim();
-  if (!v) return true;
   const m = v.replace(/\\//g, '.').match(/^(\\d{{1,2}})\\s*\\.\\s*(\\d{{1,2}})\\s*\\.\\s*(\\d{{4}})$/);
   if (!m) return false;
   const d = new Date(+m[3], +m[2] - 1, +m[1]);
@@ -1175,7 +1179,7 @@ document.getElementById('mainForm').addEventListener('submit', function(e) {{
   const dobEl = document.querySelector('input[name=client_dob]');
   if (dobEl && !dobValid(dobEl.value)) {{
     e.preventDefault(); e.stopImmediatePropagation();
-    alert('Datum narození „' + dobEl.value + '“ není platné datum. Zadejte ho ve tvaru DD.MM.RRRR, nebo pole nechte prázdné, pokud ho neznáte.');
+    alert('Datum narození je povinné. Zadejte platné datum ve tvaru DD.MM.RRRR.');
     dobEl.focus();
     return;
   }}
@@ -1968,7 +1972,7 @@ def _order_form_post_inner(
         patch['email'] = client_email
     if client_phone and client_phone.strip() != (partner.get('phone') or '').strip():
         patch['phone'] = client_phone.strip()  # the form wins (also over a phone already in Odoo)
-    if client_dob_iso and client_dob_iso != partner.get('x_studio_datum_narozeni'):
+    if client_dob_iso != partner.get('x_studio_datum_narozeni'):
         patch['x_studio_datum_narozeni'] = client_dob_iso  # the form wins (also over a date already in Odoo)
     partner.update(patch)  # apply locally for PDF; Odoo write deferred to confirm
     if not partner.get('email') or '@' not in partner['email']:
@@ -2418,15 +2422,14 @@ def _write_client_patch(call, partner_id, patch, source, order_id=None):
 
 
 def _dob_iso(text):
-    """Date of birth from the form → ISO date, None when empty; HTTP 400 when it isn't a real date
+    """Date of birth from the form → ISO date; HTTP 400 when empty or not a real date
     (e.g. 00.00.0000, which Odoo rejects on the partner write at confirm)."""
     text = (text or '').strip()
     if not text:
-        return None
+        raise HTTPException(status_code=400, detail='Datum narození je povinné. Zadejte ho ve tvaru DD.MM.RRRR.')
     iso = _iso_date(text.replace('/', '.'))
     if not iso or iso < '1900-01-01':
-        raise HTTPException(status_code=400, detail=f'Datum narození „{text}“ není platné datum. Zadejte ho ve tvaru '
-                                                    'DD.MM.RRRR, nebo pole nechte prázdné, pokud ho neznáte.')
+        raise HTTPException(status_code=400, detail=f'Datum narození „{text}“ není platné datum. Zadejte ho ve tvaru DD.MM.RRRR.')
     return iso
 
 
@@ -2730,7 +2733,7 @@ def _partner_for_document(call, partner_id, f):
     if f.get('client_phone') and f['client_phone'].strip() != (partner.get('phone') or '').strip():
         patch['phone'] = f['client_phone'].strip()  # the form wins (also over a phone already in Odoo)
     dob = _dob_iso(f.get('client_dob'))
-    if dob and dob != partner.get('x_studio_datum_narozeni'):
+    if dob != partner.get('x_studio_datum_narozeni'):
         patch['x_studio_datum_narozeni'] = dob  # the form wins (also over a date already in Odoo)
     partner.update(patch)
     if not partner.get('email') or '@' not in partner['email']:

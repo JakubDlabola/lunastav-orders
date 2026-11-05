@@ -1,5 +1,8 @@
 # Changelog
 
+## [2026-11-05] — Datum narození a e-mail jsou povinné
+- Objednávkový formulář i formulář dodatku: bez platného data narození (DD.MM.RRRR) a e-mailu nejde odeslat; oba jsou v seznamu „Před odesláním doplňte", tlačítko je neaktivní a prázdnou hodnotu odmítne i server
+
 ## [2026-11-04] — Objednávkový formulář se otevře vyplněný
 - Tlačítko „Objednávkový formulář" u objednávky, která už má položky, otevře formulář vyplněný údaji objednávky; okno „Zakázka s dotací?" se neukáže (volba se vezme z objednávky)
 - Zdroj: poslední uložený stav formuláře této objednávky, pokud stále odpovídá položkám v objednávce; jinak se formulář složí z položek objednávky (nově včetně oken a dveří, příslušenství a služeb, adresy realizace, termínu; `okna.rebuild_from_lines`, `_order_form_prefill`)
